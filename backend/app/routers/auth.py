@@ -3,26 +3,29 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from jose import jwt
-from passlib.context import CryptContext
+from pwdlib import PasswordHash
+from pwdlib.hashers.argon2 import Argon2Hasher
 
 from app.database import get_db
 from app.config import settings
 from app.models.user import User
 from app.models.school import School
 from app.models.staff import Staff
+from pydantic import EmailStr
+
 from app.schemas.user import LoginRequest, TokenResponse, SchoolBrief, UserResponse
 from app.schemas.school import SchoolCreate
 
 router = APIRouter()
-pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd = PasswordHash((Argon2Hasher(),))
 UTC = timezone.utc
 
 
 def hash_password(password: str) -> str:
-    return pwd_ctx.hash(password)
+    return pwd.hash(password)
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_ctx.verify(plain, hashed)
+    return pwd.verify(plain, hashed)
 
 def create_token(data: dict, expires_delta: timedelta) -> str:
     payload = {**data, "exp": datetime.now(UTC) + expires_delta}
@@ -112,7 +115,7 @@ async def refresh_token(body: dict):
 class RegisterRequest(SchoolCreate):
     admin_first_name: str
     admin_last_name: str
-    admin_email: str
+    admin_email: EmailStr
     admin_password: str
     admin_phone: str | None = None
 

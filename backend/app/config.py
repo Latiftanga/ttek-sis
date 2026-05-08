@@ -28,7 +28,6 @@ class Settings(BaseSettings):
 
     @property
     def SYNC_DATABASE_URL(self) -> str:
-        # Alembic needs a non-async URL
         return (
             f"postgresql://"
             f"{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
@@ -40,13 +39,13 @@ class Settings(BaseSettings):
 
     @property
     def REDIS_URL(self) -> str:
-        return f"redis://:${self.REDIS_PASSWORD}@redis:6379/0"
+        return f"redis://:{self.REDIS_PASSWORD}@redis:6379/0"
 
     # Auth
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 30
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60       # 1 hour
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 30         # 30 days
 
 
 @lru_cache
@@ -54,5 +53,4 @@ def get_settings() -> Settings:
     return Settings()
 
 
-# Single instance used across the entire app
 settings = get_settings()

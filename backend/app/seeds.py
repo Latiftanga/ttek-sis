@@ -73,3 +73,31 @@ async def seed_grading_scales(db: AsyncSession) -> None:
             ))
 
     await db.commit()
+
+
+from app.models.programme import SystemProgramme
+
+GES_PROGRAMMES = [
+    ("General Science",   "Physics, Chemistry, Biology, Elective Maths", 1),
+    ("General Arts",      "Literature, History, Government, Economics",   2),
+    ("Business",          "Accounting, Business Management, Economics",   3),
+    ("Home Economics",    "Food & Nutrition, Clothing, Management",       4),
+    ("Visual Arts",       "Graphic Design, Sculpture, Ceramics",          5),
+    ("Technical",         "Technical Drawing, Auto Mechanics, Building",  6),
+    ("Agriculture",       "Crop Science, Animal Science, Agribusiness",   7),
+]
+
+
+async def seed_system_programmes(db: AsyncSession) -> None:
+    for name, description, order in GES_PROGRAMMES:
+        exists = await db.execute(
+            select(SystemProgramme).where(SystemProgramme.name == name)
+        )
+        if exists.scalar_one_or_none():
+            continue
+        db.add(SystemProgramme(
+            name=name,
+            description=description,
+            order=order,
+        ))
+    await db.commit()

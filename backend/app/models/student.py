@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Text, Date, ForeignKey, DateTime, JSON, func
+from sqlalchemy import Column, String, Text, Date, ForeignKey, DateTime, JSON, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -7,6 +7,9 @@ from app.database import Base
 
 class Student(Base):
     __tablename__ = "students"
+    __table_args__ = (
+        UniqueConstraint("school_id", "student_number", name="uq_student_school_number"),
+    )
 
     id             = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     school_id      = Column(UUID(as_uuid=True),
@@ -42,7 +45,6 @@ class Student(Base):
 
     # ── Relationships ─────────────────────────────────────────────
     school         = relationship("School", back_populates="students")
-    user           = relationship("User", back_populates="student", uselist=False)
     contacts       = relationship("StudentContact",
                                  back_populates="student",
                                  cascade="all, delete-orphan",
