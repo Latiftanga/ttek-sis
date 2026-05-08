@@ -5,9 +5,11 @@ from fastapi.middleware.gzip import GZipMiddleware
 from app.config import settings
 from app.database import engine, Base, AsyncSessionLocal
 from app.seeds import seed_grading_scales
+from app.routers import auth, students
+from app.dependencies import CurrentUser
 
 # Import all models so SQLAlchemy sees them before create_all runs
-import app.models  # noqa
+from app.models import *  # noqa
 
 
 @asynccontextmanager
@@ -37,8 +39,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
 
 
 @app.get("/api/health", tags=["Health"])
 async def health():
     return {"status": "ok", "app": settings.APP_NAME}
+
+
+@app.get("/api/me", tags=["Auth"])
+async def me(user: CurrentUser):
+    return {"id": str(user.id), "role": user.role, "email": user.email}
+
+
+app.include_router(students.router, prefix="/api/students", tags=["Students"])
