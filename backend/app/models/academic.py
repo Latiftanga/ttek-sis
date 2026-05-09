@@ -141,7 +141,10 @@ class Class(Base):
             name = f"{name} {short}"
 
         if stream:
-            name = f"{name}{stream}"
+            # SHS already has programme in name, add space before stream
+            # Non-SHS: "Basic 4B" (no space), SHS: "SHS 1 Science A" (space)
+            separator = " " if level_group == "shs" else ""
+            name = f"{name}{separator}{stream}"
 
         return name
 

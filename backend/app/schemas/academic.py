@@ -1,38 +1,114 @@
 from uuid import UUID
 from datetime import date, datetime
-from typing import Optional
-from pydantic import BaseModel
+from typing import Optional, List
+from pydantic import BaseModel, field_validator, model_validator
+import re
 
+
+# ══════════════════════════════════════════════════════
+# ACADEMIC YEAR
+# ══════════════════════════════════════════════════════
 
 class AcademicYearCreate(BaseModel):
-    name: str           # "2024/2025"
+    name: str
     start_date: date
     end_date: date
     is_current: bool = False
 
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v):
+        if not re.match(r"^\d{4}/\d{4}$", v):
+            raise ValueError("Name must be in format YYYY/YYYY e.g. 2024/2025")
+        years = v.split("/")
+        if int(years[1]) != int(years[0]) + 1:
+            raise ValueError("Second year must follow first e.g. 2024/2025")
+        return v
 
-class AcademicYearResponse(AcademicYearCreate):
+    @model_validator(mode="after")
+    def validate_dates(self):
+        if self.end_date <= self.start_date:
+            raise ValueError("end_date must be after start_date")
+        return self
+
+
+class AcademicYearUpdate(BaseModel):
+    name: Optional[str] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+
+
+class AcademicYearResponse(BaseModel):
     id: UUID
     school_id: UUID
+    name: str
+    start_date: date
+    end_date: date
+    is_current: bool
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# ══════════════════════════════════════════════════════
+# TERM
+# ══════════════════════════════════════════════════════
+
+VALID_TERM_NAMES = {"Term 1", "Term 2", "Term 3"}
 
 
 class TermCreate(BaseModel):
-    academic_year_id: UUID
-    name: str           # "Term 1" | "Term 2" | "Term 3"
+    name: str
     start_date: date
     end_date: date
     is_current: bool = False
 
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v):
+        if v not in VALID_TERM_NAMES:
+            raise ValueError("Term name must be Term 1, Term 2, or Term 3")
+        return v
 
-class TermResponse(TermCreate):
+    @model_validator(mode="after")
+    def validate_dates(self):
+        if self.end_date <= self.start_date:
+            raise ValueError("end_date must be after start_date")
+        return self
+
+
+class TermUpdate(BaseModel):
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    is_current: Optional[bool] = None
+
+
+class TermResponse(BaseModel):
     id: UUID
     school_id: UUID
+    academic_year_id: UUID
+    name: str
+    start_date: date
+    end_date: date
+    is_current: bool
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# ══════════════════════════════════════════════════════
+# CLASS
+# ══════════════════════════════════════════════════════
+
+VALID_STREAMS = {"A", "B", "C", "D", "E"}
+
+VALID_LEVELS = {
+    "creche":  [],
+    "nursery": [1, 2],
+    "kg":      [1, 2],
+    "basic":   [1, 2, 3, 4, 5, 6, 7, 8, 9],
+    "shs":     [1, 2, 3],
+}
 
 
 class ClassCreate(BaseModel):
@@ -43,15 +119,79 @@ class ClassCreate(BaseModel):
     class_teacher_id: Optional[UUID] = None
     capacity: int = 45
 
+    @field_validator("level_group")
+    @classmethod
+    def validate_level_group(cls, v):
+        if v not in VALID_LEVELS:
+            raise ValueError(
+                f"Invalid level_group. Must be one of: {list(VALID_LEVELS.keys())}"
+            )
+        return v
 
-class ClassResponse(ClassCreate):
+    @field_validator("stream")
+    @classmethod
+    def validate_stream(cls, v):
+        if v and v.upper() not in VALID_STREAMS:
+            raise ValueError(f"Stream must be one of: {VALID_STREAMS}")
+        return v.upper() if v else v
+
+    @model_validator(mode="after")
+    def validate_level_rules(self):
+        lg = self.level_group
+        ln = self.level_number
+        prog = self.programme
+
+        if lg == "creche":
+            if ln is not None:
+                raise ValueError("Creche cannot have a level number")
+        else:
+            if ln is None:
+                raise ValueError(f"{lg.upper()} must have a level number")
+            valid = VALID_LEVELS[lg]
+            if ln not in valid:
+                raise ValueError(
+                    f"Invalid level number {ln} for {lg.upper()}. Must be one of: {valid}"
+                )
+
+        if lg == "shs" and not prog:
+            raise ValueError("SHS classes must have a programme")
+
+        if lg != "shs" and prog:
+            raise ValueError("Only SHS classes can have a programme")
+
+        return self
+
+
+class ClassUpdate(BaseModel):
+    class_teacher_id: Optional[UUID] = None
+    capacity: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
+class ClassResponse(BaseModel):
     id: UUID
     school_id: UUID
-    name: str           # auto-generated: "JHS 2A"
+    name: str
+    level_group: str
+    level_number: Optional[int] = None
+    stream: Optional[str] = None
+    programme: Optional[str] = None
+    capacity: int
     is_active: bool
+    class_teacher_id: Optional[UUID] = None
+    is_bece_level: bool
+    is_wassce_level: bool
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# ══════════════════════════════════════════════════════
+# SUBJECT
+# ══════════════════════════════════════════════════════
+
+VALID_CATEGORIES = {"core", "elective", "vocational"}
+VALID_SUBJECT_LEVELS = {"all", "basic", "shs"}
 
 
 class SubjectCreate(BaseModel):
@@ -60,10 +200,103 @@ class SubjectCreate(BaseModel):
     category: str = "core"
     level_group: str = "all"
 
+    @field_validator("category")
+    @classmethod
+    def validate_category(cls, v):
+        if v not in VALID_CATEGORIES:
+            raise ValueError(f"Category must be one of: {VALID_CATEGORIES}")
+        return v
 
-class SubjectResponse(SubjectCreate):
+    @field_validator("level_group")
+    @classmethod
+    def validate_level_group(cls, v):
+        if v not in VALID_SUBJECT_LEVELS:
+            raise ValueError(f"level_group must be one of: {VALID_SUBJECT_LEVELS}")
+        return v
+
+
+class SubjectUpdate(BaseModel):
+    name: Optional[str] = None
+    code: Optional[str] = None
+    category: Optional[str] = None
+    level_group: Optional[str] = None
+
+
+class SubjectResponse(BaseModel):
     id: UUID
-    school_id: UUID
+    school_id: Optional[UUID] = None
+    name: str
+    code: Optional[str] = None
+    category: str
+    level_group: str
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# ══════════════════════════════════════════════════════
+# ENROLLMENT
+# ══════════════════════════════════════════════════════
+
+class EnrollmentCreate(BaseModel):
+    student_id: UUID
+    class_id: UUID
+    academic_year_id: UUID
+    start_date: date
+    is_boarding: bool = False
+    notes: Optional[str] = None
+
+
+class PromoteRequest(BaseModel):
+    to_class_id: UUID
+    academic_year_id: UUID
+    start_date: date
+    notes: Optional[str] = None
+
+
+class RepeatRequest(BaseModel):
+    academic_year_id: UUID
+    start_date: date
+    notes: Optional[str] = None
+
+
+class TransferRequest(BaseModel):
+    notes: Optional[str] = None
+    end_date: Optional[date] = None
+
+
+class GraduateRequest(BaseModel):
+    notes: Optional[str] = None
+    end_date: Optional[date] = None
+
+
+class BulkPromoteRequest(BaseModel):
+    from_class_id: UUID
+    to_class_id: UUID
+    academic_year_id: UUID
+    start_date: date
+    exclude_student_ids: List[UUID] = []
+
+
+class EnrollmentResponse(BaseModel):
+    id: UUID
+    school_id: UUID
+    student_id: UUID
+    class_id: UUID
+    academic_year_id: UUID
+    status: str
+    start_date: date
+    end_date: Optional[date] = None
+    position: Optional[int] = None
+    is_boarding: bool
+    notes: Optional[str] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class BulkPromoteResponse(BaseModel):
+    promoted: int
+    skipped: int
+    errors: List[str] = []
+

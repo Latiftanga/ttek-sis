@@ -5,7 +5,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from app.config import settings
 from app.database import engine, Base, AsyncSessionLocal
 from app.seeds import seed_grading_scales
-from app.routers import auth, students
+from app.routers import auth, students, classes
 from app.dependencies import CurrentUser
 
 # Import all models so SQLAlchemy sees them before create_all runs
@@ -54,3 +54,4 @@ async def me(user: CurrentUser):
 
 
 app.include_router(students.router, prefix="/api/students", tags=["Students"])
+app.include_router(classes.router, prefix="/api", tags=["Academic"])
