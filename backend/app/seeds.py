@@ -2,6 +2,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.models.assessment import GradingScale, GradingBand
 from app.models.programme import SystemProgramme
+from app.models.academic import Subject
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -71,7 +72,7 @@ async def seed_grading_scales(db: AsyncSession) -> None:
         exists = await db.execute(
             select(GradingScale).where(
                 GradingScale.name == s["name"],
-                GradingScale.school_id == None,
+                GradingScale.school_id.is_(None),
             )
         )
         if exists.scalar_one_or_none():
@@ -208,14 +209,12 @@ async def seed_default_subjects(db: AsyncSession) -> None:
     based on school type.
     We use a SystemSubject concept — school_id NULL means system default.
     """
-    from app.models.academic import Subject
-
     for name, code, category, level_group in DEFAULT_SUBJECTS:
         exists = await db.execute(
             select(Subject).where(
                 Subject.name == name,
                 Subject.level_group == level_group,
-                Subject.school_id == None,
+                Subject.school_id.is_(None),
             )
         )
         if exists.scalar_one_or_none():

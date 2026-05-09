@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "TTEK-SIS"
     APP_ENV: str = "development"
     DEBUG: bool = True
+    CORS_ORIGINS: list[str] = ["http://localhost", "http://localhost:3000"]
 
     # Database
     POSTGRES_DB: str

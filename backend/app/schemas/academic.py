@@ -300,3 +300,14 @@ class BulkPromoteResponse(BaseModel):
     skipped: int
     errors: List[str] = []
 
+
+class ClassStudentResponse(BaseModel):
+    enrollment_id: UUID
+    student_id: UUID
+    student_number: str
+    first_name: str
+    middle_name: Optional[str] = None
+    last_name: str
+    gender: Optional[str] = None
+    is_boarding: bool
+

@@ -3,6 +3,8 @@ from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, EmailStr
 
+from app.schemas.school import SchoolCreate
+
 
 class UserBase(BaseModel):
     email: Optional[EmailStr] = None
@@ -54,3 +56,15 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     user: UserResponse
     school: Optional[SchoolBrief] = None
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
+class RegisterRequest(SchoolCreate):
+    admin_first_name: str
+    admin_last_name: str
+    admin_email: EmailStr
+    admin_password: str
+    admin_phone: Optional[str] = None

@@ -1,3 +1,5 @@
+import re
+import uuid
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,10 +13,11 @@ from app.config import settings
 from app.models.user import User
 from app.models.school import School
 from app.models.staff import Staff
-from pydantic import EmailStr
 
-from app.schemas.user import LoginRequest, TokenResponse, SchoolBrief, UserResponse
-from app.schemas.school import SchoolCreate
+from app.schemas.user import (
+    LoginRequest, TokenResponse, SchoolBrief, UserResponse,
+    RefreshRequest, RegisterRequest,
+)
 
 router = APIRouter()
 pwd = PasswordHash((Argon2Hasher(),))
@@ -32,7 +35,6 @@ def create_token(data: dict, expires_delta: timedelta) -> str:
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 def make_slug(name: str) -> str:
-    import re, uuid
     slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:50]
     return f"{slug}-{str(uuid.uuid4())[:4]}"
 
@@ -91,10 +93,8 @@ async def login(
 
 
 @router.post("/refresh")
-async def refresh_token(body: dict):
-    token = body.get("refresh_token")
-    if not token:
-        raise HTTPException(status_code=400, detail="refresh_token required")
+async def refresh_token(body: RefreshRequest):
+    token = body.refresh_token
     try:
         payload = jwt.decode(
             token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
@@ -110,14 +110,6 @@ async def refresh_token(body: dict):
         timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     return {"access_token": access_token, "token_type": "bearer"}
-
-
-class RegisterRequest(SchoolCreate):
-    admin_first_name: str
-    admin_last_name: str
-    admin_email: EmailStr
-    admin_password: str
-    admin_phone: str | None = None
 
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)

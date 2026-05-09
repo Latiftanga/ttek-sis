@@ -20,6 +20,7 @@ from app.schemas.academic import (
     PromoteRequest, RepeatRequest,
     TransferRequest, GraduateRequest,
     BulkPromoteRequest, BulkPromoteResponse,
+    ClassStudentResponse,
 )
 
 router = APIRouter()
@@ -218,7 +219,7 @@ async def create_class(
             select(SchoolProgramme).where(
                 SchoolProgramme.school_id == school.id,
                 SchoolProgramme.name == body.programme,
-                SchoolProgramme.is_active == True,
+                SchoolProgramme.is_active.is_(True),
             )
         )
         if not prog_exists.scalar_one_or_none():
@@ -266,7 +267,7 @@ async def update_class(
     return class_
 
 
-@router.get("/classes/{class_id}/students")
+@router.get("/classes/{class_id}/students", response_model=List[ClassStudentResponse])
 async def get_class_students(
     class_id: UUID, user: CurrentUser, school: CurrentSchool, db: DB,
     academic_year_id: Optional[UUID] = Query(None),
@@ -275,7 +276,7 @@ async def get_class_students(
         year_res = await db.execute(
             select(AcademicYear).where(
                 AcademicYear.school_id == school.id,
-                AcademicYear.is_current == True,
+                AcademicYear.is_current.is_(True),
             )
         )
         year = year_res.scalar_one_or_none()
@@ -563,7 +564,7 @@ async def bulk_promote(
     current_year_res = await db.execute(
         select(AcademicYear).where(
             AcademicYear.school_id == school.id,
-            AcademicYear.is_current == True,
+            AcademicYear.is_current.is_(True),
         )
     )
     current_year = current_year_res.scalar_one_or_none()
@@ -689,7 +690,7 @@ async def _get_enrollment(
 async def _unset_current_year(school_id: UUID, db: AsyncSession) -> None:
     result = await db.execute(
         select(AcademicYear).where(
-            AcademicYear.school_id == school_id, AcademicYear.is_current == True,
+            AcademicYear.school_id == school_id, AcademicYear.is_current.is_(True),
         )
     )
     for year in result.scalars().all():
@@ -699,7 +700,7 @@ async def _unset_current_year(school_id: UUID, db: AsyncSession) -> None:
 async def _unset_current_term(school_id: UUID, db: AsyncSession) -> None:
     result = await db.execute(
         select(Term).where(
-            Term.school_id == school_id, Term.is_current == True,
+            Term.school_id == school_id, Term.is_current.is_(True),
         )
     )
     for term in result.scalars().all():
