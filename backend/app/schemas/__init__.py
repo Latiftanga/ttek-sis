@@ -14,6 +14,8 @@ from app.schemas.academic import (
     SubjectCreate, SubjectResponse,
 )
 from app.schemas.attendance import (
-    AttendanceBulkCreate, AttendanceResponse
+    SchoolPeriodCreate, SchoolPeriodUpdate, SchoolPeriodResponse,
+    SessionCreate, SessionSubmit, SessionResponse,
+    RecordEditRequest, AttendanceRecordResponse,
+    SyncBatchRequest, SyncBatchResponse,
 )
-from app.schemas.sync import SyncBatchRequest, SyncBatchResponse
