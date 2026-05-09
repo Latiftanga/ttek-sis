@@ -10,16 +10,17 @@ from app.dependencies import CurrentUser
 
 # Import all models so SQLAlchemy sees them before create_all runs
 from app.models import *  # noqa
+from app.seeds import seed_grading_scales, seed_system_programmes, seed_default_subjects
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create all tables on startup
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    # Seed system defaults
     async with AsyncSessionLocal() as db:
         await seed_grading_scales(db)
+        await seed_system_programmes(db)
+        await seed_default_subjects(db)
     yield
 
 
