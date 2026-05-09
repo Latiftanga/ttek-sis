@@ -250,5 +250,39 @@ class SchoolAttendanceToday(BaseModel):
     sessions_submitted:     int
     sessions_open:          int
     sessions_not_started:   int
-    # Classes with no session at all today
     flagged_sessions:       int
+
+
+# ══════════════════════════════════════════════════════
+# REVIEW / ALERTS
+# ══════════════════════════════════════════════════════
+
+class ReviewRequest(BaseModel):
+    outcome: str    # "cleared" | "penalised"
+    notes:   Optional[str] = None
+
+    @field_validator("outcome")
+    @classmethod
+    def validate_outcome(cls, v: str) -> str:
+        if v not in ("cleared", "penalised"):
+            raise ValueError("outcome must be cleared or penalised")
+        return v
+
+
+class ReviewResponse(BaseModel):
+    message: str
+
+
+class FlaggedSessionBrief(BaseModel):
+    session_id:  str
+    class_id:    str
+    date:        str
+    teacher_id:  str
+    flag_reason: Optional[str] = None
+
+
+class AttendanceAlertsResponse(BaseModel):
+    flagged_sessions: List[FlaggedSessionBrief]
+    threshold_pct:    int
+    term_id:          str
+    note:             str

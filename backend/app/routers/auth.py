@@ -23,6 +23,9 @@ router = APIRouter()
 pwd = PasswordHash((Argon2Hasher(),))
 UTC = timezone.utc
 
+# Dummy hash used to ensure constant-time behaviour when user is not found.
+_DUMMY_HASH = pwd.hash("__dummy_password__")
+
 
 def hash_password(password: str) -> str:
     return pwd.hash(password)
@@ -49,7 +52,12 @@ async def login(
     )
     user = result.scalar_one_or_none()
 
-    if not user or not verify_password(body.password, user.password_hash):
+    # Always run verify_password to prevent timing-based email enumeration.
+    password_ok = verify_password(
+        body.password,
+        user.password_hash if user else _DUMMY_HASH,
+    )
+    if not user or not password_ok:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",

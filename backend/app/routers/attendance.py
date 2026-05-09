@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 from app.dependencies import CurrentUser, CurrentSchool, DB
 from app.models.school_period import SchoolPeriod
 from app.models.attendance import AttendanceSession, AttendanceRecord
-from app.models.academic import Class, Term
+from app.models.academic import AcademicYear, Class, Term
 from app.models.student import Student
 from app.models.enrollment import Enrollment
 from app.schemas.attendance import (
@@ -19,6 +19,8 @@ from app.schemas.attendance import (
     RecordEditRequest, AttendanceRecordResponse,
     SyncBatchRequest, SyncBatchResponse, SyncResult,
     ClassAttendanceSummary, StudentAttendanceSummary, SchoolAttendanceToday,
+    ReviewRequest, ReviewResponse,
+    AttendanceAlertsResponse, FlaggedSessionBrief,
 )
 
 router = APIRouter()
@@ -29,6 +31,29 @@ MIN_SECONDS_PER_STUDENT = 3       # less than this = too fast
 MAX_SYNC_GAP_HOURS      = 12      # more than this = large sync gap
 
 
+def _ensure_utc(dt: datetime) -> datetime:
+    """Return a UTC-aware datetime regardless of whether dt has tzinfo set."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
+
+
+def _compute_fraud_flags(
+    client_opened_at: datetime,
+    now: datetime,
+    gap_seconds: int,
+) -> tuple[bool, str | None]:
+    """Return (is_flagged, flag_reason) based on timing anomalies."""
+    if client_opened_at > now:
+        return True, "future_timestamp"
+    if gap_seconds > MAX_SYNC_GAP_HOURS * 3600:
+        return True, "large_sync_gap"
+    hour = client_opened_at.hour
+    if hour < 5 or hour >= 20:
+        return True, "outside_school_hours"
+    return False, None
+
+
 # ══════════════════════════════════════════════════════════════════════════
 # SCHOOL PERIODS
 # ══════════════════════════════════════════════════════════════════════════
@@ -37,7 +62,7 @@ MAX_SYNC_GAP_HOURS      = 12      # more than this = large sync gap
 async def list_periods(user: CurrentUser, school: CurrentSchool, db: DB):
     result = await db.execute(
         select(SchoolPeriod)
-        .where(SchoolPeriod.school_id == school.id, SchoolPeriod.is_active == True)
+        .where(SchoolPeriod.school_id == school.id, SchoolPeriod.is_active.is_(True))
         .order_by(SchoolPeriod.order)
     )
     return result.scalars().all()
@@ -100,7 +125,8 @@ async def open_session(
     if body.client_id:
         existing = await db.execute(
             select(AttendanceSession).where(
-                AttendanceSession.client_id == body.client_id
+                AttendanceSession.client_id == body.client_id,
+                AttendanceSession.school_id == school.id,
             )
         )
         existing_session = existing.scalar_one_or_none()
@@ -148,33 +174,16 @@ async def open_session(
 
     # Compute sync metadata
     now = datetime.now(UTC)
-    gap_seconds = int((now - body.client_opened_at.replace(tzinfo=UTC)).total_seconds())
+    client_opened = _ensure_utc(body.client_opened_at)
+    gap_seconds = int((now - client_opened).total_seconds())
     sync_mode = "online" if gap_seconds < 300 else "offline"
 
-    # Fraud detection
-    is_flagged = False
-    flag_reason = None
+    is_flagged, flag_reason = _compute_fraud_flags(client_opened, now, gap_seconds)
 
-    # Future timestamp check
-    if body.client_opened_at.replace(tzinfo=UTC) > now:
-        is_flagged = True
-        flag_reason = "future_timestamp"
-
-    # Large sync gap
-    elif gap_seconds > MAX_SYNC_GAP_HOURS * 3600:
-        is_flagged = True
-        flag_reason = "large_sync_gap"
-
-    # Outside school hours (before 5am or after 8pm)
-    client_hour = body.client_opened_at.hour
-    if not is_flagged and (client_hour < 5 or client_hour >= 20):
-        is_flagged = True
-        flag_reason = "outside_school_hours"
-
-    # Period time window check
+    # Period time window check (supplements the generic fraud flags)
     if not is_flagged and body.period_id:
         period = await _get_period(body.period_id, school.id, db)
-        client_time = body.client_opened_at.time()
+        client_time = client_opened.time()
         if not (period.start_time <= client_time <= period.end_time):
             is_flagged = True
             flag_reason = "outside_time_window"
@@ -267,21 +276,27 @@ async def submit_session(
 async def list_sessions(
     user: CurrentUser, school: CurrentSchool, db: DB,
     class_id: Optional[UUID] = Query(None),
-    date: Optional[date] = Query(None),
+    session_date: Optional[date] = Query(None, alias="date"),
     status: Optional[str] = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, le=200),
 ):
     query = select(AttendanceSession).where(
         AttendanceSession.school_id == school.id
     )
     if class_id:
         query = query.where(AttendanceSession.class_id == class_id)
-    if date:
-        query = query.where(AttendanceSession.date == date)
+    if session_date:
+        query = query.where(AttendanceSession.date == session_date)
     if status:
         query = query.where(AttendanceSession.status == status)
 
-    query = query.order_by(AttendanceSession.date.desc(),
-                           AttendanceSession.server_synced_at.desc())
+    query = (
+        query
+        .order_by(AttendanceSession.date.desc(), AttendanceSession.server_synced_at.desc())
+        .offset(skip)
+        .limit(limit)
+    )
     result = await db.execute(query)
     return result.scalars().all()
 
@@ -300,20 +315,17 @@ async def cancel_session(
     return session
 
 
-@router.patch("/sessions/{session_id}/review")
+@router.patch("/sessions/{session_id}/review", response_model=ReviewResponse)
 async def review_session(
     session_id: UUID,
-    outcome: str,
+    body: ReviewRequest,
     user: CurrentUser,
     school: CurrentSchool,
     db: DB,
-    notes: Optional[str] = None,
 ):
     """Headteacher reviews a flagged session."""
     if user.role not in ("headteacher", "school_admin"):
         raise HTTPException(403, "Only headteacher or admin can review flagged sessions")
-    if outcome not in ("cleared", "penalised"):
-        raise HTTPException(400, "outcome must be cleared or penalised")
 
     session = await _get_session(session_id, school.id, db)
     if not session.is_flagged:
@@ -321,10 +333,10 @@ async def review_session(
 
     session.reviewed_by = user.id
     session.reviewed_at = datetime.now(UTC)
-    session.review_outcome = outcome
-    session.review_notes = notes
+    session.review_outcome = body.outcome
+    session.review_notes = body.notes
     await db.commit()
-    return {"message": f"Session marked as {outcome}"}
+    return ReviewResponse(message=f"Session marked as {body.outcome}")
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -413,7 +425,7 @@ async def school_today(user: CurrentUser, school: CurrentSchool, db: DB):
     classes_result = await db.execute(
         select(Class).where(
             Class.school_id == school.id,
-            Class.is_active == True,
+            Class.is_active.is_(True),
         )
     )
     all_classes = classes_result.scalars().all()
@@ -474,16 +486,17 @@ async def class_today(
     )
     total_students = enrolled_result.scalar() or 0
 
-    # Get today session
+    # Get the most recent non-cancelled session for today
+    # (a class can have multiple sessions in per-lesson mode)
     session_result = await db.execute(
         select(AttendanceSession).where(
             AttendanceSession.school_id == school.id,
             AttendanceSession.class_id == class_id,
             AttendanceSession.date == today,
             AttendanceSession.status != "cancelled",
-        )
+        ).order_by(AttendanceSession.server_synced_at.desc())
     )
-    session = session_result.scalar_one_or_none()
+    session = session_result.scalars().first()
 
     if not session:
         return ClassAttendanceSummary(
@@ -615,16 +628,15 @@ async def student_summary(
     )
 
 
-@router.get("/alerts")
+@router.get("/alerts", response_model=AttendanceAlertsResponse)
 async def attendance_alerts(
     user: CurrentUser, school: CurrentSchool, db: DB,
     term_id: Optional[UUID] = Query(None),
 ):
     """
     Returns:
-      - Students with 3+ consecutive absences
-      - Students below attendance threshold
       - Flagged sessions pending review
+    Use /student/{id}/summary for individual student risk status.
     """
     if not term_id:
         term = await _get_current_term(school.id, db)
@@ -632,32 +644,31 @@ async def attendance_alerts(
 
     threshold = (school.settings or {}).get("attendance_threshold", 75)
 
-    # Flagged sessions not yet reviewed
     flagged_result = await db.execute(
         select(AttendanceSession).where(
             AttendanceSession.school_id == school.id,
-            AttendanceSession.is_flagged == True,
-            AttendanceSession.review_outcome == None,
+            AttendanceSession.is_flagged.is_(True),
+            AttendanceSession.review_outcome.is_(None),
         )
         .order_by(AttendanceSession.date.desc())
     )
     flagged_sessions = flagged_result.scalars().all()
 
-    return {
-        "flagged_sessions": [
-            {
-                "session_id":  str(s.id),
-                "class_id":    str(s.class_id),
-                "date":        s.date.isoformat(),
-                "teacher_id":  str(s.teacher_id),
-                "flag_reason": s.flag_reason,
-            }
+    return AttendanceAlertsResponse(
+        flagged_sessions=[
+            FlaggedSessionBrief(
+                session_id=str(s.id),
+                class_id=str(s.class_id),
+                date=s.date.isoformat(),
+                teacher_id=str(s.teacher_id),
+                flag_reason=s.flag_reason,
+            )
             for s in flagged_sessions
         ],
-        "threshold_pct": threshold,
-        "term_id": str(term_id),
-        "note": "Use /student/{id}/summary to check individual student risk status"
-    }
+        threshold_pct=threshold,
+        term_id=str(term_id),
+        note="Use /student/{id}/summary to check individual student risk status",
+    )
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -680,11 +691,12 @@ async def sync_batch(
     for offline_session in body.sessions:
         client_id = offline_session.session.client_id
         try:
-            # Check if already synced via client_id
+            # Check if already synced via client_id (school-scoped)
             if client_id:
                 existing = await db.execute(
                     select(AttendanceSession).where(
-                        AttendanceSession.client_id == client_id
+                        AttendanceSession.client_id == client_id,
+                        AttendanceSession.school_id == school.id,
                     )
                 )
                 if existing.scalar_one_or_none():
@@ -696,27 +708,30 @@ async def sync_batch(
                     succeeded += 1
                     continue
 
-            # Create session using the open endpoint logic
-            # Pass through the create flow
+            # Validate class and term belong to this school
+            class_check = await db.execute(
+                select(Class).where(
+                    Class.id == offline_session.session.class_id,
+                    Class.school_id == school.id,
+                )
+            )
+            if not class_check.scalar_one_or_none():
+                raise HTTPException(400, "Class does not belong to this school")
+
+            term_check = await db.execute(
+                select(Term).where(
+                    Term.id == offline_session.session.term_id,
+                    Term.school_id == school.id,
+                )
+            )
+            if not term_check.scalar_one_or_none():
+                raise HTTPException(400, "Term does not belong to this school")
+
             now = datetime.now(UTC)
-            client_opened = offline_session.session.client_opened_at
-            if client_opened.tzinfo is None:
-                client_opened = client_opened.replace(tzinfo=UTC)
-
+            client_opened = _ensure_utc(offline_session.session.client_opened_at)
             gap_seconds = int((now - client_opened).total_seconds())
-            sync_mode = "offline"
 
-            is_flagged = False
-            flag_reason = None
-
-            if client_opened > now:
-                is_flagged, flag_reason = True, "future_timestamp"
-            elif gap_seconds > MAX_SYNC_GAP_HOURS * 3600:
-                is_flagged, flag_reason = True, "large_sync_gap"
-
-            client_hour = client_opened.hour
-            if not is_flagged and (client_hour < 5 or client_hour >= 20):
-                is_flagged, flag_reason = True, "outside_school_hours"
+            is_flagged, flag_reason = _compute_fraud_flags(client_opened, now, gap_seconds)
 
             session = AttendanceSession(
                 school_id=school.id,
@@ -730,7 +745,7 @@ async def sync_batch(
                 status="submitted",
                 client_opened_at=client_opened,
                 server_synced_at=now,
-                sync_mode=sync_mode,
+                sync_mode="offline",
                 sync_gap_seconds=gap_seconds,
                 client_id=client_id,
                 is_flagged=is_flagged,
@@ -741,9 +756,7 @@ async def sync_batch(
             await db.flush()
 
             # Submission speed check
-            client_submitted = offline_session.client_submitted_at
-            if client_submitted.tzinfo is None:
-                client_submitted = client_submitted.replace(tzinfo=UTC)
+            client_submitted = _ensure_utc(offline_session.client_submitted_at)
 
             duration = (client_submitted - client_opened).total_seconds()
             num_students = len(offline_session.records)
@@ -822,11 +835,10 @@ async def _get_session(
 
 
 async def _get_current_year(school_id: UUID, db: AsyncSession):
-    from app.models.academic import AcademicYear
     result = await db.execute(
         select(AcademicYear).where(
             AcademicYear.school_id == school_id,
-            AcademicYear.is_current == True,
+            AcademicYear.is_current.is_(True),
         )
     )
     year = result.scalar_one_or_none()
@@ -839,7 +851,7 @@ async def _get_current_term(school_id: UUID, db: AsyncSession):
     result = await db.execute(
         select(Term).where(
             Term.school_id == school_id,
-            Term.is_current == True,
+            Term.is_current.is_(True),
         )
     )
     term = result.scalar_one_or_none()
