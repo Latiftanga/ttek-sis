@@ -287,7 +287,7 @@ class EnrollmentResponse(BaseModel):
     status: str
     start_date: date
     end_date: Optional[date] = None
-    position: Optional[int] = None
+    position: Optional[str] = None
     is_boarding: bool
     notes: Optional[str] = None
     created_at: datetime

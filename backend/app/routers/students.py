@@ -6,6 +6,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy import select
 
 from app.dependencies import CurrentUser, CurrentSchool, DB, require_roles
+from app.models.user import User
 from app.models.student import Student
 from app.models.student_contact import StudentContact
 from app.schemas.student import (
@@ -73,7 +74,7 @@ async def get_student(
 @router.post("/", response_model=StudentResponse, status_code=201)
 async def create_student(
     body: StudentCreate,
-    user: Annotated[CurrentUser, Depends(require_roles(
+    user: Annotated[User, Depends(require_roles(
         "school_admin", "headteacher"
     ))],
     school: CurrentSchool,

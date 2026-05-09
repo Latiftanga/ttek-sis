@@ -4,7 +4,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from app.config import settings
 from app.database import engine, Base, AsyncSessionLocal
-from app.seeds import seed_grading_scales
 from app.routers import auth, students, classes
 from app.dependencies import CurrentUser
 

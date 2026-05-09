@@ -77,6 +77,8 @@ async def update_academic_year(
     user: CurrentUser, school: CurrentSchool, db: DB,
 ):
     year = await _get_year(year_id, school.id, db)
+    if body.is_current is True:
+        await _unset_current_year(school.id, db)
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(year, field, value)
     await db.commit()
@@ -159,7 +161,7 @@ async def update_term(
     user: CurrentUser, school: CurrentSchool, db: DB,
 ):
     term = await _get_term(term_id, school.id, db)
-    if body.is_current:
+    if body.is_current is True:
         await _unset_current_term(school.id, db)
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(term, field, value)
@@ -578,6 +580,16 @@ async def bulk_promote(
     )
     enrollments = result.scalars().all()
 
+    # Pre-fetch all students already enrolled in the target year — one query instead of N.
+    already_res = await db.execute(
+        select(Enrollment.student_id).where(
+            Enrollment.school_id == school.id,
+            Enrollment.academic_year_id == body.academic_year_id,
+            Enrollment.status == "active",
+        )
+    )
+    already_enrolled: set = set(already_res.scalars().all())
+
     promoted = 0
     skipped = 0
     errors = []
@@ -587,15 +599,7 @@ async def bulk_promote(
             skipped += 1
             continue
 
-        already = await db.execute(
-            select(Enrollment).where(
-                Enrollment.school_id == school.id,
-                Enrollment.student_id == enrollment.student_id,
-                Enrollment.academic_year_id == body.academic_year_id,
-                Enrollment.status == "active",
-            )
-        )
-        if already.scalar_one_or_none():
+        if enrollment.student_id in already_enrolled:
             errors.append(f"Student {enrollment.student_id} already enrolled in new year")
             skipped += 1
             continue
