@@ -51,6 +51,8 @@ class School(Base):
     student_contacts      = relationship("StudentContact", back_populates="school")
     programmes            = relationship("SchoolProgramme", back_populates="school",
                                          order_by="SchoolProgramme.order")
+    houses                = relationship("SchoolHouse", back_populates="school",
+                                         order_by="SchoolHouse.order")
     periods               = relationship("SchoolPeriod", back_populates="school",
                                          order_by="SchoolPeriod.order")
 

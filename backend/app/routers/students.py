@@ -247,105 +247,236 @@ async def add_contact(
 # BULK UPLOAD
 # ══════════════════════════════════════════════════════════════════════════
 
+
 @router.get("/upload/template")
 async def download_template(
     user: CurrentUser,
     school: CurrentSchool,
+    db: DB,
 ):
+    """
+    Download school-branded Excel template for bulk student upload.
+    - Header color matches school accent color
+    - Class dropdown from school's active classes
+    - House dropdown if school has houses configured
+    - Phone columns formatted as Text (preserves leading zero)
+    - Relation dropdown with capitalized display names
+    """
+    from app.models.academic import Class as ClassModel, AcademicYear
+    from app.models.school_house import SchoolHouse
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, numbers
+    from openpyxl.worksheet.datavalidation import DataValidation
+    from openpyxl.utils import get_column_letter
+    from io import BytesIO
+    from fastapi.responses import StreamingResponse
+
+    # ── Fetch school data ─────────────────────────────────────────
+    classes_result = await db.execute(
+        select(ClassModel).where(
+            ClassModel.school_id == school.id,
+            ClassModel.is_active == True,
+        ).order_by(ClassModel.level_group, ClassModel.level_number, ClassModel.stream)
+    )
+    classes = classes_result.scalars().all()
+
+    houses_result = await db.execute(
+        select(SchoolHouse).where(
+            SchoolHouse.school_id == school.id,
+            SchoolHouse.is_active == True,
+        ).order_by(SchoolHouse.order)
+    )
+    houses = houses_result.scalars().all()
+
+    year_result = await db.execute(
+        select(AcademicYear).where(
+            AcademicYear.school_id == school.id,
+            AcademicYear.is_current == True,
+        )
+    )
+    current_year = year_result.scalar_one_or_none()
+
     wb = openpyxl.Workbook()
+
+    # ══════════════════════════════════════════════════════════════
+    # HIDDEN SHEET: _data — stores lookup values for dropdowns
+    # ══════════════════════════════════════════════════════════════
+    ws_data = wb.create_sheet("_data")
+    ws_data.sheet_state = "hidden"
+
+    # Class names + IDs
+    ws_data["A1"] = "class_name"
+    ws_data["B1"] = "class_id"
+    for i, cls in enumerate(classes, 2):
+        ws_data.cell(row=i, column=1, value=cls.name)
+        ws_data.cell(row=i, column=2, value=str(cls.id))
+
+    # House names
+    ws_data["C1"] = "house_name"
+    for i, house in enumerate(houses, 2):
+        ws_data.cell(row=i, column=3, value=house.name)
+
+    num_classes = len(classes)
+    num_houses  = len(houses)
+
+    # ══════════════════════════════════════════════════════════════
+    # MAIN SHEET: Students
+    # ══════════════════════════════════════════════════════════════
     ws = wb.active
     ws.title = "Students"
 
+    # ── School brand color ────────────────────────────────────────
     school_color  = (school.accent_color or "#1a6b3c").lstrip("#").upper()
     header_font   = Font(bold=True, color="FFFFFF", size=11)
     header_fill   = PatternFill("solid", fgColor=school_color)
     required_fill = PatternFill("solid", fgColor="E8F5E9")
     optional_fill = PatternFill("solid", fgColor="F5F5F5")
-    center_align  = Alignment(horizontal="center", vertical="center")
+    center_align  = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
-    ws.merge_cells("A1:N1")
-    ws["A1"] = f"{school.name} — Student Import Template"
+    # ── Title row ─────────────────────────────────────────────────
+    ws.merge_cells("A1:O1")
+    year_label = current_year.name if current_year else "No current year set"
+    ws["A1"] = f"{school.name}  |  Student Import  |  {year_label}"
     ws["A1"].font = Font(bold=True, size=13, color=school_color)
     ws["A1"].alignment = center_align
     ws.row_dimensions[1].height = 30
 
-    ws.merge_cells("A2:N2")
+    # ── Instructions ──────────────────────────────────────────────
+    ws.merge_cells("A2:O2")
+    class_note = (
+        f"{num_classes} class(es) available in dropdown."
+        if num_classes else
+        "No classes found — create classes first."
+    )
+    house_note = (
+        f"{num_houses} house(s) in dropdown."
+        if num_houses else
+        "No houses configured — type house name freely."
+    )
     ws["A2"] = (
-        "Instructions: Fill from row 4 onwards. "
-        "Green columns are required. "
-        "Do not change column headers. "
-        "Date format: YYYY-MM-DD (e.g. 2008-03-15)"
+        f"Fill from row 4. Green = required. "
+        f"Date: YYYY-MM-DD. Phone: include leading zero e.g. 0244123456. "
+        f"{class_note}  {house_note}"
     )
     ws["A2"].font = Font(italic=True, size=10, color="555555")
     ws["A2"].alignment = center_align
-    ws.row_dimensions[2].height = 20
+    ws.row_dimensions[2].height = 25
 
+    # ── Column definitions ────────────────────────────────────────
+    # (header, width, required, example, is_phone)
     columns = [
-        ("student_number",     15, True,  "SHS001"),
-        ("first_name",         15, True,  "Kofi"),
-        ("middle_name",        15, False, "Adu"),
-        ("last_name",          15, True,  "Mensah"),
-        ("gender",             10, True,  "male"),
-        ("date_of_birth",      15, False, "2008-03-15"),
-        ("admission_date",     15, False, "2024-09-01"),
-        ("house",              12, False, "Unity"),
-        ("contact_first_name", 18, False, "Emmanuel"),
-        ("contact_last_name",  18, False, "Mensah"),
-        ("contact_relation",   18, False, "father"),
-        ("contact_phone",      15, False, "0244123456"),
-        ("contact_phone2",     15, False, ""),
-        ("contact_is_parent",  15, False, "yes"),
+        ("student_number",     15, True,  "SHS001",      False),
+        ("first_name",         15, True,  "Kofi",         False),
+        ("middle_name",        15, False, "Adu",          False),
+        ("last_name",          15, True,  "Mensah",       False),
+        ("gender",             10, True,  "Male",         False),
+        ("date_of_birth",      15, False, "2008-03-15",   False),
+        ("admission_date",     15, False, "2024-09-01",   False),
+        ("house",              15, False, houses[0].name if houses else "Unity", False),
+        ("contact_first_name", 18, False, "Emmanuel",     False),
+        ("contact_last_name",  18, False, "Mensah",       False),
+        ("contact_relation",   18, False, "Father",       False),
+        ("contact_phone",      15, False, "0244123456",   True),
+        ("contact_phone2",     15, False, "0201234567",   True),
+        ("contact_is_parent",  15, False, "Yes",          False),
+        ("class",              22, False, classes[0].name if classes else "", False),
     ]
 
-    for col_idx, (header, width, required, _) in enumerate(columns, 1):
+    # ── Header row (row 3) ────────────────────────────────────────
+    for col_idx, (header, width, required, _, _ph) in enumerate(columns, 1):
         cell = ws.cell(row=3, column=col_idx, value=header)
         cell.font = header_font
         cell.fill = header_fill
         cell.alignment = center_align
-        ws.column_dimensions[
-            openpyxl.utils.get_column_letter(col_idx)
-        ].width = width
-    ws.row_dimensions[3].height = 20
+        ws.column_dimensions[get_column_letter(col_idx)].width = width
+    ws.row_dimensions[3].height = 22
 
-    for col_idx, (_, _, required, example) in enumerate(columns, 1):
+    # ── Example row (row 4) ───────────────────────────────────────
+    for col_idx, (_, _, required, example, _ph) in enumerate(columns, 1):
         cell = ws.cell(row=4, column=col_idx, value=example)
         cell.fill = required_fill if required else optional_fill
-        cell.font = Font(italic=True, color="666666")
+        cell.font = Font(italic=True, color="888888", size=10)
 
+    # ── Format phone columns as Text (preserves leading zero) ─────
+    text_format = numbers.FORMAT_TEXT
+    for col_idx, (_, _, _, _, is_phone) in enumerate(columns, 1):
+        if is_phone:
+            col_letter = get_column_letter(col_idx)
+            for row in range(4, 10001):
+                ws[f"{col_letter}{row}"].number_format = text_format
+
+    # ── Data validations ──────────────────────────────────────────
+
+    # Gender — capitalized display
     gender_dv = DataValidation(
         type="list",
-        formula1='"male,female"',
+        formula1='"Male,Female"',
         allow_blank=True,
         showErrorMessage=True,
         errorTitle="Invalid gender",
-        error="Please select male or female",
+        error="Select Male or Female",
     )
     ws.add_data_validation(gender_dv)
     gender_dv.sqref = "E5:E10000"
 
+    # Contact is_parent
     parent_dv = DataValidation(
         type="list",
-        formula1='"yes,no"',
+        formula1='"Yes,No"',
         allow_blank=True,
     )
     ws.add_data_validation(parent_dv)
     parent_dv.sqref = "N5:N10000"
 
+    # Relation — capitalized display
     relation_dv = DataValidation(
         type="list",
-        formula1='"father,mother,grandfather,grandmother,uncle,aunt,brother,sister,guardian,other"',
+        formula1='"Father,Mother,Grandfather,Grandmother,Uncle,Aunt,Brother,Sister,Guardian,Other"',
         allow_blank=True,
+        showErrorMessage=True,
+        errorTitle="Invalid relation",
+        error="Select a relation from the list",
     )
     ws.add_data_validation(relation_dv)
     relation_dv.sqref = "K5:K10000"
 
+    # House dropdown (only if school has houses)
+    if num_houses > 0:
+        house_range = f"_data!$C$2:$C${num_houses + 1}"
+        house_dv = DataValidation(
+            type="list",
+            formula1=house_range,
+            allow_blank=True,
+            showErrorMessage=True,
+            errorTitle="Invalid house",
+            error="Select a house from the list",
+        )
+        ws.add_data_validation(house_dv)
+        house_dv.sqref = "H5:H10000"
+
+    # Class dropdown (from hidden sheet)
+    if num_classes > 0:
+        class_range = f"_data!$A$2:$A${num_classes + 1}"
+        class_dv = DataValidation(
+            type="list",
+            formula1=class_range,
+            allow_blank=True,
+            showErrorMessage=True,
+            errorTitle="Invalid class",
+            error="Select a class from the list",
+        )
+        ws.add_data_validation(class_dv)
+        class_dv.sqref = "O5:O10000"
+
+    # ── Freeze header rows ────────────────────────────────────────
     ws.freeze_panes = "A5"
 
+    # ── Save ──────────────────────────────────────────────────────
     buffer = BytesIO()
     wb.save(buffer)
     buffer.seek(0)
 
-    filename = f"{school.slug}_student_template.xlsx"
+    filename = f"{school.slug}_student_import.xlsx"
     return StreamingResponse(
         buffer,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -448,9 +579,10 @@ async def bulk_upload_students(
             else:
                 seen_numbers.add(student_number)
 
+        # Normalize to lowercase — template shows Male/Female
         gender = str(row_data.get("gender", "") or "").strip().lower()
         if gender and gender not in ("male", "female"):
-            row_errors.append(f"gender must be male or female, got: {gender}")
+            row_errors.append(f"gender must be Male or Female, got: {gender}")
         gender = gender or None
 
         def parse_date(val, field_name):
@@ -496,14 +628,14 @@ async def bulk_upload_students(
 
         if contact_first and contact_phone:
             is_parent_val = str(
-                row_data.get("contact_is_parent", "yes") or "yes"
+                row_data.get("contact_is_parent", "Yes") or "Yes"
             ).strip().lower()
             db.add(StudentContact(
                 school_id          = school.id,
                 student_id         = student.id,
                 first_name         = contact_first,
                 last_name          = str(row_data.get("contact_last_name", "") or "").strip() or None,
-                relation           = str(row_data.get("contact_relation", "guardian") or "guardian").strip(),
+                relation           = str(row_data.get("contact_relation", "guardian") or "guardian").strip().lower(),
                 phone              = contact_phone,
                 phone2             = str(row_data.get("contact_phone2", "") or "").strip() or None,
                 is_parent          = is_parent_val == "yes",

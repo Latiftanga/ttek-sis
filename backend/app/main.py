@@ -6,6 +6,7 @@ from app.config import settings
 from app.database import engine, Base, AsyncSessionLocal
 from app.routers import auth, students, classes
 from app.routers import attendance as attendance_router
+from app.routers import grades as grades_router
 from app.dependencies import CurrentUser
 
 from app.models import *  # noqa
@@ -53,3 +54,4 @@ async def me(user: CurrentUser):
 app.include_router(students.router, prefix="/api/students", tags=["Students"])
 app.include_router(classes.router, prefix="/api", tags=["Academic"])
 app.include_router(attendance_router.router, prefix="/api/attendance", tags=["Attendance"])
+app.include_router(grades_router.router, prefix="/api/assessments", tags=["Assessments"])

@@ -159,6 +159,10 @@ class AssessmentScore(Base):
                            ForeignKey("users.id"),
                            nullable=False)
     recorded_at    = Column(DateTime(timezone=True), server_default=func.now())
+    is_edited      = Column(Boolean, default=False)
+    original_score = Column(Numeric(5, 2), nullable=True)
+    edit_count     = Column(Integer, default=0)
+
     last_edited_by = Column(UUID(as_uuid=True),
                            ForeignKey("users.id"),
                            nullable=True)
@@ -223,3 +227,44 @@ class TermResult(Base):
     created_at    = Column(DateTime(timezone=True), server_default=func.now())
     updated_at    = Column(DateTime(timezone=True), server_default=func.now(),
                           onupdate=func.now())
+
+class ScoreEditLog(Base):
+    """
+    Immutable audit log — one row per score change.
+    Never deleted. Never updated. Append only.
+    This is what makes the system trustworthy for WAEC later.
+    """
+    __tablename__ = "score_edit_logs"
+
+    id                  = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    school_id           = Column(UUID(as_uuid=True),
+                                ForeignKey("schools.id", ondelete="CASCADE"),
+                                nullable=False)
+    assessment_score_id = Column(UUID(as_uuid=True),
+                                ForeignKey("assessment_scores.id", ondelete="CASCADE"),
+                                nullable=False)
+    changed_by          = Column(UUID(as_uuid=True),
+                                ForeignKey("users.id"),
+                                nullable=False)
+    changed_at          = Column(DateTime(timezone=True),
+                                server_default=func.now(),
+                                nullable=False)
+    # Server timestamp — cannot be faked
+
+    old_score           = Column(Numeric(5, 2), nullable=True)
+    new_score           = Column(Numeric(5, 2), nullable=True)
+    old_is_absent       = Column(Boolean, default=False)
+    new_is_absent       = Column(Boolean, default=False)
+    reason              = Column(Text, nullable=True)
+
+    # Context flags — for suspicious activity report
+    is_after_submission = Column(Boolean, default=False)
+    # True if assessment was already published when edit happened
+
+    is_after_lock       = Column(Boolean, default=False)
+    # True if term results were locked when edit happened
+
+    # Extra accountability
+    changed_at_hour     = Column(Integer, nullable=True)
+    # Hour of day (0-23) stored for anomaly detection
+    # e.g. edits at 23:00 are suspicious
