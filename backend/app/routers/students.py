@@ -1,4 +1,5 @@
 from typing import Annotated, List, Optional
+from datetime import date
 from io import BytesIO
 from datetime import date as date_type
 import openpyxl
@@ -670,4 +671,304 @@ async def bulk_upload_students(
             + (f" and enrolled in {class_.name}" if class_ else "")
             + (f". {skipped} rows skipped." if skipped else ".")
         ),
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# STUDENT PORTAL CREDENTIALS
+# ══════════════════════════════════════════════════════════════════════════
+
+@router.post("/{student_id}/enable-portal")
+async def enable_student_portal(
+    student_id: UUID,
+    user: CurrentUser,
+    school: CurrentSchool,
+    db: DB,
+):
+    """
+    Enable student portal access.
+    Sets default PIN = date of birth (DDMMYYYY).
+    Falls back to student_number if no DOB.
+    Student must change PIN on first login.
+    """
+    from pwdlib import PasswordHash
+    from pwdlib.hashers.argon2 import Argon2Hasher
+
+    if user.role not in ("school_admin", "headteacher"):
+        raise HTTPException(403, "Only admin or headteacher can enable portal access")
+
+    result = await db.execute(
+        select(Student).where(
+            Student.id == student_id,
+            Student.school_id == school.id,
+        )
+    )
+    student = result.scalar_one_or_none()
+    if not student:
+        raise HTTPException(404, "Student not found")
+
+    # Check school has portal enabled for this student's level
+    from app.models.enrollment import Enrollment
+    from app.models.academic import Class as ClassModel, AcademicYear
+    year_res = await db.execute(
+        select(AcademicYear).where(
+            AcademicYear.school_id == school.id,
+            AcademicYear.is_current == True,
+        )
+    )
+    year = year_res.scalar_one_or_none()
+
+    if year:
+        enrollment_res = await db.execute(
+            select(Enrollment).where(
+                Enrollment.student_id == student_id,
+                Enrollment.academic_year_id == year.id,
+                Enrollment.status == "active",
+            )
+        )
+        enrollment = enrollment_res.scalar_one_or_none()
+        if enrollment:
+            class_res = await db.execute(
+                select(ClassModel).where(ClassModel.id == enrollment.class_id)
+            )
+            cls = class_res.scalar_one_or_none()
+            if cls and not school.portal_enabled_for_level(
+                cls.level_group, cls.level_number
+            ):
+                raise HTTPException(
+                    400,
+                    f"Student portal is not enabled for {cls.level_group.upper()} level. "
+                    f"Enable it in school settings first."
+                )
+
+    # Generate default PIN
+    pwd = PasswordHash((Argon2Hasher(),))
+    if student.date_of_birth:
+        default_pin = student.date_of_birth.strftime("%d%m%Y")
+    else:
+        default_pin = student.student_number
+
+    student.pin_hash = pwd.hash(default_pin)
+    await db.commit()
+
+    return {
+        "message": "Portal access enabled",
+        "student_number": student.student_number,
+        "default_pin": default_pin,
+        "note": "Student must change PIN on first login",
+    }
+
+
+@router.post("/{student_id}/disable-portal")
+async def disable_student_portal(
+    student_id: UUID,
+    user: CurrentUser,
+    school: CurrentSchool,
+    db: DB,
+):
+    """Disable student portal access."""
+    if user.role not in ("school_admin", "headteacher"):
+        raise HTTPException(403, "Only admin or headteacher can disable portal access")
+
+    result = await db.execute(
+        select(Student).where(
+            Student.id == student_id,
+            Student.school_id == school.id,
+        )
+    )
+    student = result.scalar_one_or_none()
+    if not student:
+        raise HTTPException(404, "Student not found")
+
+    student.pin_hash = None
+    await db.commit()
+    return {"message": "Portal access disabled"}
+
+
+@router.post("/{student_id}/reset-pin")
+async def reset_student_pin(
+    student_id: UUID,
+    user: CurrentUser,
+    school: CurrentSchool,
+    db: DB,
+):
+    """
+    Reset student PIN to default (date of birth or student number).
+    Used when student forgets PIN.
+    """
+    from pwdlib import PasswordHash
+    from pwdlib.hashers.argon2 import Argon2Hasher
+
+    if user.role not in ("school_admin", "headteacher", "teacher"):
+        raise HTTPException(403, "Not authorised to reset PIN")
+
+    result = await db.execute(
+        select(Student).where(
+            Student.id == student_id,
+            Student.school_id == school.id,
+        )
+    )
+    student = result.scalar_one_or_none()
+    if not student:
+        raise HTTPException(404, "Student not found")
+
+    if not student.pin_hash:
+        raise HTTPException(400, "Portal not enabled for this student")
+
+    pwd = PasswordHash((Argon2Hasher(),))
+    if student.date_of_birth:
+        default_pin = student.date_of_birth.strftime("%d%m%Y")
+    else:
+        default_pin = student.student_number
+
+    student.pin_hash = pwd.hash(default_pin)
+    await db.commit()
+
+    return {
+        "message": "PIN reset to default",
+        "default_pin": default_pin,
+        "note": "Student must change PIN on next login",
+    }
+
+
+@router.post("/bulk-enable-portal")
+async def bulk_enable_portal(
+    class_id: UUID,
+    user: CurrentUser,
+    school: CurrentSchool,
+    db: DB,
+):
+    """
+    Enable portal for all active students in a class at once.
+    Useful at start of term.
+    """
+    from pwdlib import PasswordHash
+    from pwdlib.hashers.argon2 import Argon2Hasher
+    from app.models.enrollment import Enrollment
+    from app.models.academic import AcademicYear
+
+    if user.role not in ("school_admin", "headteacher"):
+        raise HTTPException(403, "Only admin or headteacher can bulk enable portal")
+
+    year_res = await db.execute(
+        select(AcademicYear).where(
+            AcademicYear.school_id == school.id,
+            AcademicYear.is_current == True,
+        )
+    )
+    year = year_res.scalar_one_or_none()
+    if not year:
+        raise HTTPException(404, "No current academic year")
+
+    enrollments_res = await db.execute(
+        select(Enrollment)
+        .options(selectinload(Enrollment.student))
+        .where(
+            Enrollment.school_id == school.id,
+            Enrollment.class_id == class_id,
+            Enrollment.academic_year_id == year.id,
+            Enrollment.status == "active",
+        )
+    )
+    enrollments = enrollments_res.scalars().all()
+
+    pwd = PasswordHash((Argon2Hasher(),))
+    enabled = 0
+    skipped = 0
+
+    for enrollment in enrollments:
+        student = enrollment.student
+        if student.pin_hash:
+            skipped += 1
+            continue
+        if student.date_of_birth:
+            default_pin = student.date_of_birth.strftime("%d%m%Y")
+        else:
+            default_pin = student.student_number
+        student.pin_hash = pwd.hash(default_pin)
+        enabled += 1
+
+    await db.commit()
+    return {
+        "enabled": enabled,
+        "skipped": skipped,
+        "message": f"Portal enabled for {enabled} students. "
+                   f"{skipped} already had access.",
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# TRANSFER INBOUND
+# ══════════════════════════════════════════════════════════════════════════
+
+@router.post("/{student_id}/transfer-in")
+async def transfer_student_in(
+    student_id: UUID,
+    user: CurrentUser,
+    school: CurrentSchool,
+    db: DB,
+    class_id: UUID = None,
+    academic_year_id: UUID = None,
+    start_date: date = None,
+    previous_school: Optional[str] = None,
+    notes: Optional[str] = None,
+):
+    """
+    Record a student transferring INTO this school.
+    Creates enrollment in the specified class.
+    Updates student status to active.
+    """
+    from app.models.enrollment import Enrollment
+
+    result = await db.execute(
+        select(Student).where(
+            Student.id == student_id,
+            Student.school_id == school.id,
+        )
+    )
+    student = result.scalar_one_or_none()
+    if not student:
+        raise HTTPException(404, "Student not found")
+
+    if student.status == "active":
+        raise HTTPException(400, "Student is already active")
+
+    if not class_id or not academic_year_id or not start_date:
+        raise HTTPException(
+            400,
+            "class_id, academic_year_id and start_date are required"
+        )
+
+    # Check not already enrolled this year
+    existing = await db.execute(
+        select(Enrollment).where(
+            Enrollment.student_id == student_id,
+            Enrollment.academic_year_id == academic_year_id,
+            Enrollment.status == "active",
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(409, "Student already has an active enrollment this year")
+
+    student.status = "active"
+
+    enrollment_notes = f"Transfer in from {previous_school}. " if previous_school else "Transfer in. "
+    if notes:
+        enrollment_notes += notes
+
+    db.add(Enrollment(
+        school_id=school.id,
+        student_id=student_id,
+        class_id=class_id,
+        academic_year_id=academic_year_id,
+        start_date=start_date,
+        status="active",
+        notes=enrollment_notes,
+    ))
+
+    await db.commit()
+    return {
+        "message": "Student transfer recorded successfully",
+        "student_number": student.student_number,
+        "previous_school": previous_school,
     }
