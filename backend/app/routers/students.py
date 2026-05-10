@@ -1,4 +1,18 @@
 from typing import Annotated, List, Optional
+from io import BytesIO
+from datetime import date as date_type
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment
+from openpyxl.worksheet.datavalidation import DataValidation
+from fastapi import File, UploadFile
+from fastapi.responses import StreamingResponse
+from io import BytesIO
+from datetime import date as date_type
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment
+from openpyxl.worksheet.datavalidation import DataValidation
+from fastapi import File, UploadFile
+from fastapi.responses import StreamingResponse
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -229,3 +243,299 @@ async def add_contact(
     await db.commit()
     await db.refresh(contact)
     return contact
+# ══════════════════════════════════════════════════════════════════════════
+# BULK UPLOAD
+# ══════════════════════════════════════════════════════════════════════════
+
+@router.get("/upload/template")
+async def download_template(
+    user: CurrentUser,
+    school: CurrentSchool,
+):
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Students"
+
+    school_color  = (school.accent_color or "#1a6b3c").lstrip("#").upper()
+    header_font   = Font(bold=True, color="FFFFFF", size=11)
+    header_fill   = PatternFill("solid", fgColor=school_color)
+    required_fill = PatternFill("solid", fgColor="E8F5E9")
+    optional_fill = PatternFill("solid", fgColor="F5F5F5")
+    center_align  = Alignment(horizontal="center", vertical="center")
+
+    ws.merge_cells("A1:N1")
+    ws["A1"] = f"{school.name} — Student Import Template"
+    ws["A1"].font = Font(bold=True, size=13, color=school_color)
+    ws["A1"].alignment = center_align
+    ws.row_dimensions[1].height = 30
+
+    ws.merge_cells("A2:N2")
+    ws["A2"] = (
+        "Instructions: Fill from row 4 onwards. "
+        "Green columns are required. "
+        "Do not change column headers. "
+        "Date format: YYYY-MM-DD (e.g. 2008-03-15)"
+    )
+    ws["A2"].font = Font(italic=True, size=10, color="555555")
+    ws["A2"].alignment = center_align
+    ws.row_dimensions[2].height = 20
+
+    columns = [
+        ("student_number",     15, True,  "SHS001"),
+        ("first_name",         15, True,  "Kofi"),
+        ("middle_name",        15, False, "Adu"),
+        ("last_name",          15, True,  "Mensah"),
+        ("gender",             10, True,  "male"),
+        ("date_of_birth",      15, False, "2008-03-15"),
+        ("admission_date",     15, False, "2024-09-01"),
+        ("house",              12, False, "Unity"),
+        ("contact_first_name", 18, False, "Emmanuel"),
+        ("contact_last_name",  18, False, "Mensah"),
+        ("contact_relation",   18, False, "father"),
+        ("contact_phone",      15, False, "0244123456"),
+        ("contact_phone2",     15, False, ""),
+        ("contact_is_parent",  15, False, "yes"),
+    ]
+
+    for col_idx, (header, width, required, _) in enumerate(columns, 1):
+        cell = ws.cell(row=3, column=col_idx, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = center_align
+        ws.column_dimensions[
+            openpyxl.utils.get_column_letter(col_idx)
+        ].width = width
+    ws.row_dimensions[3].height = 20
+
+    for col_idx, (_, _, required, example) in enumerate(columns, 1):
+        cell = ws.cell(row=4, column=col_idx, value=example)
+        cell.fill = required_fill if required else optional_fill
+        cell.font = Font(italic=True, color="666666")
+
+    gender_dv = DataValidation(
+        type="list",
+        formula1='"male,female"',
+        allow_blank=True,
+        showErrorMessage=True,
+        errorTitle="Invalid gender",
+        error="Please select male or female",
+    )
+    ws.add_data_validation(gender_dv)
+    gender_dv.sqref = "E5:E10000"
+
+    parent_dv = DataValidation(
+        type="list",
+        formula1='"yes,no"',
+        allow_blank=True,
+    )
+    ws.add_data_validation(parent_dv)
+    parent_dv.sqref = "N5:N10000"
+
+    relation_dv = DataValidation(
+        type="list",
+        formula1='"father,mother,grandfather,grandmother,uncle,aunt,brother,sister,guardian,other"',
+        allow_blank=True,
+    )
+    ws.add_data_validation(relation_dv)
+    relation_dv.sqref = "K5:K10000"
+
+    ws.freeze_panes = "A5"
+
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    filename = f"{school.slug}_student_template.xlsx"
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@router.post("/upload")
+async def bulk_upload_students(
+    user: CurrentUser,
+    school: CurrentSchool,
+    db: DB,
+    file: UploadFile = File(...),
+    class_id: Optional[UUID] = None,
+    academic_year_id: Optional[UUID] = None,
+    start_date: Optional[date_type] = None,
+):
+    if not file.filename.endswith((".xlsx", ".xls")):
+        raise HTTPException(400, "File must be an Excel file (.xlsx or .xls)")
+
+    contents = await file.read()
+    try:
+        wb = openpyxl.load_workbook(BytesIO(contents), data_only=True)
+        ws = wb.active
+    except Exception:
+        raise HTTPException(400, "Could not read Excel file. Please use the template.")
+
+    HEADER_ROW = 3
+    DATA_START  = 4
+
+    headers = []
+    for cell in ws[HEADER_ROW]:
+        if cell.value:
+            headers.append(str(cell.value).strip())
+
+    required_headers = {"student_number", "first_name", "last_name"}
+    missing = required_headers - set(headers)
+    if missing:
+        raise HTTPException(
+            400,
+            f"Missing required columns: {missing}. Please use the downloaded template."
+        )
+
+    class_ = None
+    if class_id:
+        from app.models.academic import Class as ClassModel
+        class_result = await db.execute(
+            select(ClassModel).where(
+                ClassModel.id == class_id,
+                ClassModel.school_id == school.id,
+            )
+        )
+        class_ = class_result.scalar_one_or_none()
+        if not class_:
+            raise HTTPException(404, "Class not found")
+        if not academic_year_id or not start_date:
+            raise HTTPException(
+                400,
+                "academic_year_id and start_date are required when class_id is provided"
+            )
+
+    imported  = 0
+    skipped   = 0
+    errors    = []
+    seen_numbers = set()
+
+    existing_result = await db.execute(
+        select(Student.student_number).where(Student.school_id == school.id)
+    )
+    existing_numbers = {row[0] for row in existing_result.all()}
+
+    for row_idx, row in enumerate(
+        ws.iter_rows(min_row=DATA_START, values_only=True), start=DATA_START
+    ):
+        if not any(row):
+            continue
+
+        row_data = {}
+        for i, header in enumerate(headers):
+            row_data[header] = row[i] if i < len(row) else None
+
+        row_errors = []
+
+        student_number = str(row_data.get("student_number", "") or "").strip()
+        first_name     = str(row_data.get("first_name", "") or "").strip()
+        last_name      = str(row_data.get("last_name", "") or "").strip()
+
+        if not student_number:
+            row_errors.append("student_number is required")
+        if not first_name:
+            row_errors.append("first_name is required")
+        if not last_name:
+            row_errors.append("last_name is required")
+
+        if student_number:
+            if student_number in seen_numbers:
+                row_errors.append(f"Duplicate student_number in file: {student_number}")
+            elif student_number in existing_numbers:
+                row_errors.append(f"Student number {student_number} already exists")
+            else:
+                seen_numbers.add(student_number)
+
+        gender = str(row_data.get("gender", "") or "").strip().lower()
+        if gender and gender not in ("male", "female"):
+            row_errors.append(f"gender must be male or female, got: {gender}")
+        gender = gender or None
+
+        def parse_date(val, field_name):
+            if not val:
+                return None
+            try:
+                if isinstance(val, date_type):
+                    return val
+                return date_type.fromisoformat(str(val).strip())
+            except ValueError:
+                row_errors.append(f"{field_name} must be YYYY-MM-DD, got: {val}")
+                return None
+
+        dob          = parse_date(row_data.get("date_of_birth"),  "date_of_birth")
+        admission_dt = parse_date(row_data.get("admission_date"), "admission_date")
+
+        if row_errors:
+            skipped += 1
+            errors.append({
+                "row":    row_idx,
+                "data":   {"student_number": student_number,
+                           "name": f"{first_name} {last_name}"},
+                "errors": row_errors,
+            })
+            continue
+
+        student = Student(
+            school_id      = school.id,
+            student_number = student_number,
+            first_name     = first_name,
+            middle_name    = str(row_data.get("middle_name", "") or "").strip() or None,
+            last_name      = last_name,
+            gender         = gender,
+            date_of_birth  = dob,
+            admission_date = admission_dt,
+            house          = str(row_data.get("house", "") or "").strip() or None,
+        )
+        db.add(student)
+        await db.flush()
+
+        contact_first = str(row_data.get("contact_first_name", "") or "").strip()
+        contact_phone = str(row_data.get("contact_phone", "") or "").strip()
+
+        if contact_first and contact_phone:
+            is_parent_val = str(
+                row_data.get("contact_is_parent", "yes") or "yes"
+            ).strip().lower()
+            db.add(StudentContact(
+                school_id          = school.id,
+                student_id         = student.id,
+                first_name         = contact_first,
+                last_name          = str(row_data.get("contact_last_name", "") or "").strip() or None,
+                relation           = str(row_data.get("contact_relation", "guardian") or "guardian").strip(),
+                phone              = contact_phone,
+                phone2             = str(row_data.get("contact_phone2", "") or "").strip() or None,
+                is_parent          = is_parent_val == "yes",
+                is_primary_contact = True,
+                can_pickup         = True,
+                receives_sms       = True,
+                is_alive           = True,
+            ))
+
+        if class_id and academic_year_id and start_date:
+            from app.models.enrollment import Enrollment
+            db.add(Enrollment(
+                school_id        = school.id,
+                student_id       = student.id,
+                class_id         = class_id,
+                academic_year_id = academic_year_id,
+                start_date       = start_date,
+                status           = "active",
+            ))
+
+        imported += 1
+        existing_numbers.add(student_number)
+
+    await db.commit()
+
+    return {
+        "imported": imported,
+        "skipped":  skipped,
+        "errors":   errors,
+        "message":  (
+            f"Successfully imported {imported} students"
+            + (f" and enrolled in {class_.name}" if class_ else "")
+            + (f". {skipped} rows skipped." if skipped else ".")
+        ),
+    }
