@@ -1,21 +1,26 @@
 "use client";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/lib/store";
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { user, accessToken, _hasHydrated } = useAuthStore();
+  const { user, accessToken } = useAuthStore();
+
+  // `useEffect` only runs on the client. By the time it fires, Zustand's
+  // persist middleware has already read localStorage synchronously and
+  // restored the auth state — so reading `user`/`accessToken` after setting
+  // hydrated=true will always reflect the real persisted values.
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => { setHydrated(true); }, []);
 
   useEffect(() => {
-    // Wait until the persist store has finished reading from localStorage
-    // before making any redirect decision — avoids false logout on reload.
-    if (_hasHydrated && (!user || !accessToken)) {
+    if (hydrated && (!user || !accessToken)) {
       router.replace("/login");
     }
-  }, [_hasHydrated, user, accessToken, router]);
+  }, [hydrated, user, accessToken, router]);
 
-  if (!_hasHydrated || !user || !accessToken) {
+  if (!hydrated || !user || !accessToken) {
     return (
       <div
         role="status"
