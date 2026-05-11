@@ -1,0 +1,43 @@
+{
+  "name": "TTEK-SIS",
+  "short_name": "TTEK-SIS",
+  "description": "Tagnatek Student Information System — school management for Ghanaian schools",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f9fafb",
+  "theme_color": "#059669",
+  "categories": ["education", "productivity"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "url": "/dashboard",
+      "description": "Go to dashboard"
+    },
+    {
+      "name": "Students",
+      "url": "/students",
+      "description": "Manage students"
+    },
+    {
+      "name": "Attendance",
+      "url": "/attendance",
+      "description": "Take attendance"
+    }
+  ]
+}

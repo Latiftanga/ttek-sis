@@ -68,8 +68,11 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    ports:
+      - "3000:3000"
     volumes:
-      - ./frontend/src:/app/src    # live reload
+      - ./frontend:/app            # full source mount — all changes hot-reload
+      - /app/node_modules          # keep container's node_modules intact
     depends_on:
       - backend
     networks:
