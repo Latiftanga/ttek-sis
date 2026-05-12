@@ -1,5 +1,6 @@
 from app.models.school import School
-from app.models.staff import Staff
+from app.models.staff import Staff, StaffQualification, StaffPromotion
+from app.models.ges_rank import GESRank
 from app.models.user import User
 from app.models.assessment import (
     GradingScale,

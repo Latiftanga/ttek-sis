@@ -9,6 +9,7 @@ import ThemeToggle from "./ThemeToggle";
 import {
   LayoutDashboard,
   Users,
+  UserCog,
   BookOpen,
   CalendarCheck,
   GraduationCap,
@@ -18,12 +19,13 @@ import {
 } from "lucide-react";
 
 const navItems = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/students", label: "Students", icon: Users },
-  { href: "/classes", label: "Classes", icon: School },
-  { href: "/academic", label: "Academic", icon: BookOpen },
+  { href: "/dashboard",  label: "Dashboard",  icon: LayoutDashboard },
+  { href: "/students",   label: "Students",   icon: Users },
+  { href: "/staff",      label: "Staff",      icon: UserCog },
+  { href: "/classes",    label: "Classes",    icon: School },
+  { href: "/academic",   label: "Academic",   icon: BookOpen },
   { href: "/attendance", label: "Attendance", icon: CalendarCheck },
-  { href: "/grades", label: "Gradebook", icon: GraduationCap },
+  { href: "/grades",     label: "Gradebook",  icon: GraduationCap },
 ];
 
 interface SidebarProps {

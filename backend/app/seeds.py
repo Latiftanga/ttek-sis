@@ -3,6 +3,7 @@ from sqlalchemy import select
 from app.models.assessment import GradingScale, GradingBand
 from app.models.programme import SystemProgramme
 from app.models.academic import Subject
+from app.models.ges_rank import GESRank
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -200,6 +201,84 @@ DEFAULT_SUBJECTS = [
     ("Animal Science",                "ANIM", "elective", "shs"),
     ("Agribusiness",                  "AGRI", "elective", "shs"),
 ]
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# GES RANKS
+# ══════════════════════════════════════════════════════════════════════════
+
+# Each entry: (category, order, name)
+GES_RANKS: list[tuple[str, int, str]] = [
+    # ── Teaching Staff ────────────────────────────────────────────────────
+    ("teaching",  1,  "Superintendent I"),
+    ("teaching",  2,  "Superintendent II"),
+    ("teaching",  3,  "Senior Superintendent II"),
+    ("teaching",  4,  "Senior Superintendent I"),
+    ("teaching",  5,  "Principal Superintendent"),
+    ("teaching",  6,  "Assistant Director II"),
+    ("teaching",  7,  "Assistant Director I"),
+    ("teaching",  8,  "Deputy Director"),
+    ("teaching",  9,  "Director II"),
+    ("teaching", 10,  "Director I"),
+
+    # ── Accounting ────────────────────────────────────────────────────────
+    ("accounting", 1, "Principal Accountant"),
+    ("accounting", 2, "Deputy Chief Accountant I"),
+    ("accounting", 3, "Chief Accountant II"),
+    ("accounting", 4, "Chief Accountant I"),
+
+    # ── Internal Audit ────────────────────────────────────────────────────
+    ("audit", 1, "Principal Internal Auditor"),
+    ("audit", 2, "Deputy Chief Internal Auditor II"),
+    ("audit", 3, "Deputy Chief Internal Auditor I"),
+    ("audit", 4, "Chief Internal Auditor II"),
+
+    # ── Administration ────────────────────────────────────────────────────
+    ("administration", 1, "Principal Administration Officer"),
+    ("administration", 2, "Deputy Chief Administrative Officer II"),
+    ("administration", 3, "Deputy Chief Administrative Officer I"),
+    ("administration", 4, "Chief Administrative Officer II"),
+
+    # ── Catering ──────────────────────────────────────────────────────────
+    ("catering", 1, "Principal Domestic Bursar"),
+    ("catering", 2, "Deputy Chief Domestic Bursar"),
+    ("catering", 3, "Chief Domestic Bursar"),
+
+    # ── Technical ─────────────────────────────────────────────────────────
+    ("technical", 1, "Principal Technical Officer"),
+    ("technical", 2, "Deputy Chief Technical Officer"),
+    ("technical", 3, "Chief Technical Officer"),
+
+    # ── Supply ────────────────────────────────────────────────────────────
+    ("supply", 1, "Principal Supply Officer"),
+    ("supply", 2, "Deputy Chief Supply Officer"),
+    ("supply", 3, "Chief Supply Officer"),
+
+    # ── Laboratory ────────────────────────────────────────────────────────
+    ("laboratory", 1, "Principal Laboratory Technician"),
+    ("laboratory", 2, "Deputy Chief Laboratory Technician"),
+    ("laboratory", 3, "Chief Laboratory Technician"),
+
+    # ── Secretarial ───────────────────────────────────────────────────────
+    ("secretarial", 1, "Private Secretary"),
+    ("secretarial", 2, "Senior Private Secretary"),
+    ("secretarial", 3, "Principal Private Secretary"),
+
+    # ── Driver ────────────────────────────────────────────────────────────
+    ("driver", 1, "Yard Foreman"),
+    ("driver", 2, "Chief Driver"),
+    ("driver", 3, "Principal Driver"),
+]
+
+
+async def seed_ges_ranks(db: AsyncSession) -> None:
+    """Idempotent — skips ranks that already exist by name."""
+    for category, order, name in GES_RANKS:
+        exists = await db.execute(select(GESRank).where(GESRank.name == name))
+        if exists.scalar_one_or_none():
+            continue
+        db.add(GESRank(name=name, category=category, order=order))
+    await db.commit()
 
 
 async def seed_default_subjects(db: AsyncSession) -> None:

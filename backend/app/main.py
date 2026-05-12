@@ -4,13 +4,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from app.config import settings
 from app.database import engine, Base, AsyncSessionLocal
-from app.routers import auth, students, classes
+from app.routers import auth, students, classes, staff as staff_router
 from app.routers import attendance as attendance_router
 from app.routers import grades as grades_router
 from app.dependencies import CurrentUser
 
 from app.models import *  # noqa
-from app.seeds import seed_grading_scales, seed_system_programmes, seed_default_subjects
+from app.seeds import seed_grading_scales, seed_system_programmes, seed_default_subjects, seed_ges_ranks
 
 
 @asynccontextmanager
@@ -19,6 +19,7 @@ async def lifespan(app: FastAPI):
         await seed_grading_scales(db)
         await seed_system_programmes(db)
         await seed_default_subjects(db)
+        await seed_ges_ranks(db)
         yield
 
 
@@ -55,3 +56,4 @@ app.include_router(students.router, prefix="/api/students", tags=["Students"])
 app.include_router(classes.router, prefix="/api", tags=["Academic"])
 app.include_router(attendance_router.router, prefix="/api/attendance", tags=["Attendance"])
 app.include_router(grades_router.router, prefix="/api/assessments", tags=["Assessments"])
+app.include_router(staff_router.router, prefix="/api/staff", tags=["Staff"])

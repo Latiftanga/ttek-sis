@@ -89,6 +89,38 @@ export const studentsApi = {
   },
 };
 
+// ── Staff ────────────────────────────────────────────────────────────────
+export interface InviteResult {
+  temp_password?: string;
+}
+
+export const staffApi = {
+  list: (params?: Record<string, string | number>) =>
+    api.get("/staff/", { params }).then((r) => r.data),
+  get: (id: string) => api.get(`/staff/${id}`).then((r) => r.data),
+  create: (body: unknown) =>
+    api.post("/staff/", body).then((r) => r.data),
+  update: (id: string, body: unknown) =>
+    api.patch(`/staff/${id}`, body).then((r) => r.data),
+  remove: (id: string) => api.delete(`/staff/${id}`),
+  invite: (id: string, body: unknown): Promise<InviteResult> =>
+    api.post(`/staff/${id}/invite`, body).then((r) => r.data),
+  toggleAccount: (id: string) =>
+    api.post(`/staff/${id}/toggle-account`).then((r) => r.data),
+  // qualifications
+  addQualification: (staffId: string, body: unknown) =>
+    api.post(`/staff/${staffId}/qualifications`, body).then((r) => r.data),
+  removeQualification: (staffId: string, qualId: string) =>
+    api.delete(`/staff/${staffId}/qualifications/${qualId}`),
+  // promotions
+  addPromotion: (staffId: string, body: unknown) =>
+    api.post(`/staff/${staffId}/promotions`, body).then((r) => r.data),
+  removePromotion: (staffId: string, promoId: string) =>
+    api.delete(`/staff/${staffId}/promotions/${promoId}`),
+  // GES rank catalogue
+  gesRanks: () => api.get("/staff/ges-ranks").then((r) => r.data),
+};
+
 // ── Academic ────────────────────────────────────────────────────────────
 export const academicApi = {
   listYears: () => api.get("/academic-years").then((r) => r.data),
