@@ -32,7 +32,7 @@ export default function BulkUploadModal({ open, onClose }: BulkUploadModalProps)
   }
 
   function handleFile(file: File) {
-    if (!file.name.match(/\.(xlsx|xls)$/)) {
+    if (!file.name.match(/\.(xlsx|xls)$/i)) {
       toast.error("Please upload an Excel file (.xlsx or .xls)");
       return;
     }
@@ -114,7 +114,7 @@ export default function BulkUploadModal({ open, onClose }: BulkUploadModalProps)
             onClick={() => fileInputRef.current?.click()}
             onKeyDown={(e) => e.key === "Enter" && fileInputRef.current?.click()}
             onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-            onDragLeave={() => setDragging(false)}
+            onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false); }}
             onDrop={(e) => {
               e.preventDefault();
               setDragging(false);
@@ -167,7 +167,9 @@ export default function BulkUploadModal({ open, onClose }: BulkUploadModalProps)
         {result && (
           <div className="space-y-3 rounded-lg border border-gray-200 p-4 dark:border-gray-700">
             <div className="flex items-center gap-3">
-              <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+              {result.imported > 0
+                ? <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                : <XCircle className="h-5 w-5 text-amber-500" />}
               <div>
                 <p className="text-sm font-medium text-gray-900 dark:text-white">
                   {result.imported} student{result.imported !== 1 ? "s" : ""} imported

@@ -1,3 +1,4 @@
+import uuid as uuid_lib
 from typing import Annotated, List, Optional
 from datetime import date as date_type
 from io import BytesIO
@@ -27,6 +28,8 @@ from app.schemas.student import (
 )
 
 router = APIRouter()
+
+_pwd = PasswordHash((Argon2Hasher(),))
 
 
 # ── GET /api/students ──────────────────────────────────────────────────────
@@ -105,38 +108,18 @@ async def create_student(
             detail=f"Student number '{body.student_number}' already exists",
         )
 
-    student = Student(
-        school_id=school.id,
-        student_number=body.student_number,
-        first_name=body.first_name,
-        middle_name=body.middle_name,
-        last_name=body.last_name,
-        date_of_birth=body.date_of_birth,
-        gender=body.gender,
-        photo_url=body.photo_url,
-        home_address=body.home_address,
-        admission_date=body.admission_date,
-        house=body.house,
-        programme=body.programme,
-        notes=body.notes,
-    )
+    sid = uuid_lib.uuid4()
+    student = Student(id=sid, school_id=school.id, **body.model_dump(exclude={"contacts"}))
     db.add(student)
-    await db.flush()   # get student.id before adding contacts
 
-    # Add contacts if provided
     for c in body.contacts:
-        contact = StudentContact(
-            school_id=school.id,
-            student_id=student.id,
-            **c.model_dump(),
-        )
-        db.add(contact)
+        db.add(StudentContact(school_id=school.id, student_id=sid, **c.model_dump()))
 
     await db.commit()
     result = await db.execute(
         select(Student)
         .options(selectinload(Student.contacts))
-        .where(Student.id == student.id)
+        .where(Student.id == sid)
     )
     return result.scalar_one()
 
@@ -359,7 +342,7 @@ async def download_template(
         ("first_name",         15, True,  "Kofi",         False),
         ("middle_name",        15, False, "Adu",          False),
         ("last_name",          15, True,  "Mensah",       False),
-        ("gender",             10, True,  "Male",         False),
+        ("gender",             10, False, "Male",         False),
         ("date_of_birth",      15, False, "2008-03-15",   False),
         ("admission_date",     15, False, "2024-09-01",   False),
         ("house",              15, False, houses[0].name if houses else "Unity", False),
@@ -600,7 +583,9 @@ async def bulk_upload_students(
             })
             continue
 
+        sid = uuid_lib.uuid4()
         student = Student(
+            id             = sid,
             school_id      = school.id,
             student_number = student_number,
             first_name     = first_name,
@@ -612,18 +597,23 @@ async def bulk_upload_students(
             house          = str(row_data.get("house", "") or "").strip() or None,
         )
         db.add(student)
-        await db.flush()
 
         contact_first = str(row_data.get("contact_first_name", "") or "").strip()
         contact_phone = str(row_data.get("contact_phone", "") or "").strip()
 
+        if contact_first and not contact_phone:
+            errors.append({
+                "row": row_idx,
+                "data": {"student_number": student_number, "name": f"{first_name} {last_name}"},
+                "errors": ["contact_first_name provided but contact_phone is missing — contact skipped"],
+            })
         if contact_first and contact_phone:
             is_parent_val = str(
                 row_data.get("contact_is_parent", "Yes") or "Yes"
             ).strip().lower()
             db.add(StudentContact(
                 school_id          = school.id,
-                student_id         = student.id,
+                student_id         = sid,
                 first_name         = contact_first,
                 last_name          = str(row_data.get("contact_last_name", "") or "").strip() or None,
                 relation           = str(row_data.get("contact_relation", "guardian") or "guardian").strip().lower(),
@@ -639,7 +629,7 @@ async def bulk_upload_students(
         if class_id and academic_year_id and start_date:
             db.add(Enrollment(
                 school_id        = school.id,
-                student_id       = student.id,
+                student_id       = sid,
                 class_id         = class_id,
                 academic_year_id = academic_year_id,
                 start_date       = start_date,
@@ -670,7 +660,7 @@ async def bulk_upload_students(
 @router.post("/{student_id}/enable-portal")
 async def enable_student_portal(
     student_id: UUID,
-    user: CurrentUser,
+    _: Annotated[User, Depends(require_roles("school_admin", "headteacher"))],
     school: CurrentSchool,
     db: DB,
 ):
@@ -680,8 +670,6 @@ async def enable_student_portal(
     Falls back to student_number if no DOB.
     Student must change PIN on first login.
     """
-    if user.role not in ("school_admin", "headteacher"):
-        raise HTTPException(403, "Only admin or headteacher can enable portal access")
 
     result = await db.execute(
         select(Student).where(
@@ -725,13 +713,12 @@ async def enable_student_portal(
                     f"Enable it in school settings first."
                 )
 
-    pwd = PasswordHash((Argon2Hasher(),))
     if student.date_of_birth:
         default_pin = student.date_of_birth.strftime("%d%m%Y")
     else:
         default_pin = student.student_number
 
-    student.pin_hash = pwd.hash(default_pin)
+    student.pin_hash = _pwd.hash(default_pin)
     await db.commit()
 
     return {
@@ -745,13 +732,11 @@ async def enable_student_portal(
 @router.post("/{student_id}/disable-portal")
 async def disable_student_portal(
     student_id: UUID,
-    user: CurrentUser,
+    _: Annotated[User, Depends(require_roles("school_admin", "headteacher"))],
     school: CurrentSchool,
     db: DB,
 ):
     """Disable student portal access."""
-    if user.role not in ("school_admin", "headteacher"):
-        raise HTTPException(403, "Only admin or headteacher can disable portal access")
 
     result = await db.execute(
         select(Student).where(
@@ -771,7 +756,7 @@ async def disable_student_portal(
 @router.post("/{student_id}/reset-pin")
 async def reset_student_pin(
     student_id: UUID,
-    user: CurrentUser,
+    _: Annotated[User, Depends(require_roles("school_admin", "headteacher", "teacher"))],
     school: CurrentSchool,
     db: DB,
 ):
@@ -779,8 +764,6 @@ async def reset_student_pin(
     Reset student PIN to default (date of birth or student number).
     Used when student forgets PIN.
     """
-    if user.role not in ("school_admin", "headteacher", "teacher"):
-        raise HTTPException(403, "Not authorised to reset PIN")
 
     result = await db.execute(
         select(Student).where(
@@ -795,13 +778,12 @@ async def reset_student_pin(
     if not student.pin_hash:
         raise HTTPException(400, "Portal not enabled for this student")
 
-    pwd = PasswordHash((Argon2Hasher(),))
     if student.date_of_birth:
         default_pin = student.date_of_birth.strftime("%d%m%Y")
     else:
         default_pin = student.student_number
 
-    student.pin_hash = pwd.hash(default_pin)
+    student.pin_hash = _pwd.hash(default_pin)
     await db.commit()
 
     return {
@@ -814,7 +796,7 @@ async def reset_student_pin(
 @router.post("/bulk-enable-portal")
 async def bulk_enable_portal(
     class_id: UUID,
-    user: CurrentUser,
+    _: Annotated[User, Depends(require_roles("school_admin", "headteacher"))],
     school: CurrentSchool,
     db: DB,
 ):
@@ -822,8 +804,6 @@ async def bulk_enable_portal(
     Enable portal for all active students in a class at once.
     Useful at start of term.
     """
-    if user.role not in ("school_admin", "headteacher"):
-        raise HTTPException(403, "Only admin or headteacher can bulk enable portal")
 
     year_res = await db.execute(
         select(AcademicYear).where(
@@ -847,7 +827,6 @@ async def bulk_enable_portal(
     )
     enrollments = enrollments_res.scalars().all()
 
-    pwd = PasswordHash((Argon2Hasher(),))
     enabled = 0
     skipped = 0
 
@@ -860,7 +839,7 @@ async def bulk_enable_portal(
             default_pin = student.date_of_birth.strftime("%d%m%Y")
         else:
             default_pin = student.student_number
-        student.pin_hash = pwd.hash(default_pin)
+        student.pin_hash = _pwd.hash(default_pin)
         enabled += 1
 
     await db.commit()

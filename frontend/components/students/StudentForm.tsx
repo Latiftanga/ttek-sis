@@ -13,6 +13,7 @@ import AvatarUpload from "@/components/ui/AvatarUpload";
 import { useCreateStudent, useUpdateStudent, type Student } from "@/lib/hooks/useStudents";
 import { useClasses, useAcademicYears } from "@/lib/hooks/useAcademic";
 import { academicApi } from "@/lib/api";
+import { uploadApi } from "@/lib/api";
 import { getInitials, getApiError } from "@/lib/utils";
 
 const schema = z.object({
@@ -52,13 +53,27 @@ export default function StudentForm({ student, onSuccess, onCancel }: StudentFor
   const currentYear = years.find((y) => y.is_current) ?? years[0];
 
   const [photo, setPhoto] = useState<string | null>(student?.photo_url ?? null);
+  const [uploading, setUploading] = useState(false);
   const [enrollOpen, setEnrollOpen] = useState(false);
+
+  async function handlePhotoFile(file: File) {
+    setUploading(true);
+    try {
+      const { url } = await uploadApi.photo(file);
+      setPhoto(url);
+    } catch {
+      toast.error("Photo upload failed — photo will not be saved");
+    } finally {
+      setUploading(false);
+    }
+  }
 
   const {
     register,
     handleSubmit,
     watch,
     reset,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -139,7 +154,8 @@ export default function StudentForm({ student, onSuccess, onCancel }: StudentFor
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
-      <AvatarUpload value={photo} initials={initials} onChange={setPhoto} size="md" />
+      <AvatarUpload value={photo} initials={initials} onChange={setPhoto} onFile={handlePhotoFile} size="md" />
+      {uploading && <p className="text-xs text-[var(--brand)]">Uploading photo…</p>}
 
       <div className="grid grid-cols-2 gap-4">
         <div className="col-span-2 sm:col-span-1">
@@ -187,7 +203,11 @@ export default function StudentForm({ student, onSuccess, onCancel }: StudentFor
         <div className="rounded-lg border border-gray-200 dark:border-gray-700">
           <button
             type="button"
-            onClick={() => setEnrollOpen((p) => !p)}
+            onClick={() => {
+              const next = !enrollOpen;
+              setEnrollOpen(next);
+              setValue("enroll", next);
+            }}
             className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
           >
             <span className="flex items-center gap-2">
@@ -251,7 +271,7 @@ export default function StudentForm({ student, onSuccess, onCancel }: StudentFor
         <Button type="button" variant="secondary" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" loading={isSubmitting}>
+        <Button type="submit" loading={isSubmitting} disabled={uploading}>
           {isEdit ? "Save Changes" : "Add Student"}
         </Button>
       </div>

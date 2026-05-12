@@ -1,7 +1,7 @@
 from uuid import UUID
 from datetime import date, datetime
 from typing import Optional, List, Literal
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 StudentStatus = Literal["active", "graduated", "transferred", "withdrawn"]
 StudentGender = Literal["male", "female"]
@@ -54,6 +54,14 @@ class StudentBase(BaseModel):
 class StudentCreate(StudentBase):
     contacts: Optional[List[StudentContactCreate]] = []
 
+    @field_validator("student_number", "first_name", "last_name", mode="before")
+    @classmethod
+    def strip_required(cls, v: str) -> str:
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("Field cannot be blank")
+        return stripped
+
 
 class StudentUpdate(BaseModel):
     first_name: Optional[str] = None
@@ -68,6 +76,16 @@ class StudentUpdate(BaseModel):
     programme: Optional[str] = None
     status: Optional[StudentStatus] = None
     notes: Optional[str] = None
+
+    @field_validator("first_name", "last_name", mode="before")
+    @classmethod
+    def strip_names(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("Name cannot be blank")
+        return stripped
 
 
 class StudentResponse(StudentBase):
