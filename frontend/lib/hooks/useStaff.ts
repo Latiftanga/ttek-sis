@@ -1,6 +1,6 @@
 "use client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { staffApi, type InviteResult } from "@/lib/api";
+import { staffApi, type InviteResult, type CreateStaffResult } from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
 
 export interface StaffUser {
@@ -115,7 +115,7 @@ export function useGESRanks() {
 export function useCreateStaff() {
   const qc = useQueryClient();
   const slug = useSlug();
-  return useMutation({
+  return useMutation<CreateStaffResult, Error, unknown>({
     mutationFn: (body: unknown) => staffApi.create(body),
     onSuccess: () => qc.invalidateQueries({ queryKey: [slug, "staff"] }),
   });

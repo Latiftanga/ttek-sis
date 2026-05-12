@@ -408,6 +408,8 @@ async def bulk_upload_staff(
         raise HTTPException(400, "File must be an Excel file (.xlsx or .xls)")
 
     contents = await file.read()
+    if len(contents) > 10 * 1024 * 1024:
+        raise HTTPException(400, "File must be under 10 MB")
     try:
         wb = openpyxl.load_workbook(BytesIO(contents), data_only=True)
         ws = wb.active

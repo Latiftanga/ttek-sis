@@ -94,11 +94,33 @@ export interface InviteResult {
   temp_password?: string;
 }
 
+export interface CreateStaffResult {
+  temp_password?: string | null;
+  [key: string]: unknown;
+}
+
+export const uploadApi = {
+  photo: (file: File): Promise<{ url: string }> => {
+    const form = new FormData();
+    form.append("file", file);
+    return api.post("/upload/photo", form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }).then((r) => r.data);
+  },
+};
+
+export interface StaffBulkUploadResult {
+  imported: number;
+  skipped: number;
+  errors: { row: number; data: { staff_number: string; name: string }; errors: string[] }[];
+  message: string;
+}
+
 export const staffApi = {
   list: (params?: Record<string, string | number>) =>
     api.get("/staff/", { params }).then((r) => r.data),
   get: (id: string) => api.get(`/staff/${id}`).then((r) => r.data),
-  create: (body: unknown) =>
+  create: (body: unknown): Promise<CreateStaffResult> =>
     api.post("/staff/", body).then((r) => r.data),
   update: (id: string, body: unknown) =>
     api.patch(`/staff/${id}`, body).then((r) => r.data),
@@ -119,6 +141,16 @@ export const staffApi = {
     api.delete(`/staff/${staffId}/promotions/${promoId}`),
   // GES rank catalogue
   gesRanks: () => api.get("/staff/ges-ranks").then((r) => r.data),
+  // bulk upload
+  downloadTemplate: () =>
+    api.get("/staff/upload/template", { responseType: "blob" }),
+  bulkUpload: (file: File): Promise<StaffBulkUploadResult> => {
+    const form = new FormData();
+    form.append("file", file);
+    return api
+      .post("/staff/upload", form, { headers: { "Content-Type": "multipart/form-data" } })
+      .then((r) => r.data);
+  },
 };
 
 // ── Academic ────────────────────────────────────────────────────────────
