@@ -37,7 +37,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={geist.variable} suppressHydrationWarning>
+    <html lang="en" className={geist.variable} suppressHydrationWarning data-scroll-behavior="smooth">
       {/* Inline script prevents flash of wrong theme before React hydrates */}
       <head>
         <script

@@ -1,7 +1,10 @@
 from uuid import UUID
 from datetime import date, datetime
-from typing import Optional, List
+from typing import Optional, List, Literal
 from pydantic import BaseModel
+
+StudentStatus = Literal["active", "graduated", "transferred", "withdrawn"]
+StudentGender = Literal["male", "female"]
 
 
 class StudentContactBase(BaseModel):
@@ -39,12 +42,13 @@ class StudentBase(BaseModel):
     middle_name: Optional[str] = None
     last_name: str
     date_of_birth: Optional[date] = None
-    gender: Optional[str] = None
+    gender: Optional[StudentGender] = None
     photo_url: Optional[str] = None
     home_address: Optional[str] = None
     admission_date: Optional[date] = None
     house: Optional[str] = None
     programme: Optional[str] = None
+    notes: Optional[str] = None
 
 
 class StudentCreate(StudentBase):
@@ -56,18 +60,20 @@ class StudentUpdate(BaseModel):
     middle_name: Optional[str] = None
     last_name: Optional[str] = None
     date_of_birth: Optional[date] = None
-    gender: Optional[str] = None
+    gender: Optional[StudentGender] = None
     photo_url: Optional[str] = None
     home_address: Optional[str] = None
+    admission_date: Optional[date] = None
     house: Optional[str] = None
     programme: Optional[str] = None
-    status: Optional[str] = None
+    status: Optional[StudentStatus] = None
+    notes: Optional[str] = None
 
 
 class StudentResponse(StudentBase):
     id: UUID
     school_id: UUID
-    status: str
+    status: StudentStatus
     contacts: List[StudentContactResponse] = []
     created_at: datetime
 

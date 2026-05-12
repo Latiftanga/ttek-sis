@@ -35,6 +35,9 @@ class Student(Base):
     house          = Column(String(100))
     programme      = Column(String(100))    # SHS only
 
+    # ── Notes ────────────────────────────────────────────────────
+    notes          = Column(Text)
+
     # ── Student portal login ──────────────────────────────────────
     pin_hash       = Column(Text)
 
