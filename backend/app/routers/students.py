@@ -344,7 +344,7 @@ async def download_template(
         "No houses configured — type house name freely."
     )
     ws["A2"] = (
-        f"Fill from row 4. Green = required. "
+        f"Fill from row 5. Green = required. "
         f"Date: YYYY-MM-DD. Phone: include leading zero e.g. 0244123456. "
         f"{class_note}  {house_note}"
     )
@@ -476,7 +476,7 @@ async def download_template(
 
 @router.post("/upload")
 async def bulk_upload_students(
-    user: CurrentUser,
+    user: Annotated[User, Depends(require_roles("school_admin", "headteacher"))],
     school: CurrentSchool,
     db: DB,
     file: UploadFile = File(...),
@@ -488,6 +488,8 @@ async def bulk_upload_students(
         raise HTTPException(400, "File must be an Excel file (.xlsx or .xls)")
 
     contents = await file.read()
+    if len(contents) > 10 * 1024 * 1024:
+        raise HTTPException(400, "File must be under 10 MB")
     try:
         wb = openpyxl.load_workbook(BytesIO(contents), data_only=True)
         ws = wb.active
@@ -495,7 +497,7 @@ async def bulk_upload_students(
         raise HTTPException(400, "Could not read Excel file. Please use the template.")
 
     HEADER_ROW = 3
-    DATA_START  = 4
+    DATA_START  = 5
 
     headers = []
     for cell in ws[HEADER_ROW]:
@@ -880,8 +882,8 @@ async def transfer_student_in(
     user: CurrentUser,
     school: CurrentSchool,
     db: DB,
-    class_id: UUID = None,
-    academic_year_id: UUID = None,
+    class_id: Optional[UUID] = None,
+    academic_year_id: Optional[UUID] = None,
     start_date: Optional[date_type] = None,
     previous_school: Optional[str] = None,
     notes: Optional[str] = None,
