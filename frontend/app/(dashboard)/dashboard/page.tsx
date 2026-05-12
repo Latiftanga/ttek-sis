@@ -17,7 +17,7 @@ import {
 
 const quickActions = [
   {
-    href: "/students/new",
+    href: "/students?add=1",
     label: "Add student",
     desc: "Enrol a new student",
     icon: "👤",

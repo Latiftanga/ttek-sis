@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import {
@@ -200,11 +201,12 @@ function exportToCsv(students: Student[], filename: string) {
 export default function StudentsPage() {
   const { user, school } = useAuthStore();
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(0);
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(() => searchParams.get("add") === "1");
   const [editStudent, setEditStudent] = useState<Student | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<Student | null>(null);
