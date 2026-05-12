@@ -1,29 +1,26 @@
 from typing import Annotated, List, Optional
-from datetime import date
-from io import BytesIO
 from datetime import date as date_type
-import openpyxl
-from openpyxl.styles import Font, PatternFill, Alignment
-from openpyxl.worksheet.datavalidation import DataValidation
-from fastapi import File, UploadFile
-from fastapi.responses import StreamingResponse
 from io import BytesIO
-from datetime import date as date_type
-import openpyxl
-from openpyxl.styles import Font, PatternFill, Alignment
-from openpyxl.worksheet.datavalidation import DataValidation
-from fastapi import File, UploadFile
-from fastapi.responses import StreamingResponse
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment, numbers as xl_numbers
+from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.datavalidation import DataValidation
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import selectinload
 from sqlalchemy import select
+from pwdlib import PasswordHash
+from pwdlib.hashers.argon2 import Argon2Hasher
 
 from app.dependencies import CurrentUser, CurrentSchool, DB, require_roles
 from app.models.user import User
 from app.models.student import Student
 from app.models.student_contact import StudentContact
+from app.models.academic import Class as ClassModel, AcademicYear
+from app.models.enrollment import Enrollment
+from app.models.school_house import SchoolHouse
 from app.schemas.student import (
     StudentCreate, StudentUpdate,
     StudentResponse, StudentContactCreate, StudentContactResponse
@@ -42,7 +39,7 @@ async def list_students(
     search: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
-    limit: int = Query(50, le=200),
+    limit: int = Query(50, le=5000),
 ):
     query = select(Student).options(selectinload(Student.contacts)).where(Student.school_id == school.id)
 
@@ -121,6 +118,7 @@ async def create_student(
         admission_date=body.admission_date,
         house=body.house,
         programme=body.programme,
+        notes=body.notes,
     )
     db.add(student)
     await db.flush()   # get student.id before adding contacts
@@ -152,7 +150,7 @@ async def create_student(
 async def update_student(
     student_id: UUID,
     body: StudentUpdate,
-    user: CurrentUser,
+    user: Annotated[User, Depends(require_roles("school_admin", "headteacher"))],
     school: CurrentSchool,
     db: DB,
 ):
@@ -210,7 +208,7 @@ async def delete_student(
 async def add_contact(
     student_id: UUID,
     body: StudentContactCreate,
-    user: CurrentUser,
+    user: Annotated[User, Depends(require_roles("school_admin", "headteacher"))],
     school: CurrentSchool,
     db: DB,
 ):
@@ -263,15 +261,6 @@ async def download_template(
     - Phone columns formatted as Text (preserves leading zero)
     - Relation dropdown with capitalized display names
     """
-    from app.models.academic import Class as ClassModel, AcademicYear
-    from app.models.school_house import SchoolHouse
-    import openpyxl
-    from openpyxl.styles import Font, PatternFill, Alignment, numbers
-    from openpyxl.worksheet.datavalidation import DataValidation
-    from openpyxl.utils import get_column_letter
-    from io import BytesIO
-    from fastapi.responses import StreamingResponse
-
     # ── Fetch school data ─────────────────────────────────────────
     classes_result = await db.execute(
         select(ClassModel).where(
@@ -399,7 +388,7 @@ async def download_template(
         cell.font = Font(italic=True, color="888888", size=10)
 
     # ── Format phone columns as Text (preserves leading zero) ─────
-    text_format = numbers.FORMAT_TEXT
+    text_format = xl_numbers.FORMAT_TEXT
     for col_idx, (_, _, _, _, is_phone) in enumerate(columns, 1):
         if is_phone:
             col_letter = get_column_letter(col_idx)
@@ -523,7 +512,6 @@ async def bulk_upload_students(
 
     class_ = None
     if class_id:
-        from app.models.academic import Class as ClassModel
         class_result = await db.execute(
             select(ClassModel).where(
                 ClassModel.id == class_id,
@@ -548,6 +536,17 @@ async def bulk_upload_students(
         select(Student.student_number).where(Student.school_id == school.id)
     )
     existing_numbers = {row[0] for row in existing_result.all()}
+
+    def parse_date(val, field_name: str, row_errors: list):
+        if not val:
+            return None
+        try:
+            if isinstance(val, date_type):
+                return val
+            return date_type.fromisoformat(str(val).strip())
+        except ValueError:
+            row_errors.append(f"{field_name} must be YYYY-MM-DD, got: {val}")
+            return None
 
     for row_idx, row in enumerate(
         ws.iter_rows(min_row=DATA_START, values_only=True), start=DATA_START
@@ -586,19 +585,8 @@ async def bulk_upload_students(
             row_errors.append(f"gender must be Male or Female, got: {gender}")
         gender = gender or None
 
-        def parse_date(val, field_name):
-            if not val:
-                return None
-            try:
-                if isinstance(val, date_type):
-                    return val
-                return date_type.fromisoformat(str(val).strip())
-            except ValueError:
-                row_errors.append(f"{field_name} must be YYYY-MM-DD, got: {val}")
-                return None
-
-        dob          = parse_date(row_data.get("date_of_birth"),  "date_of_birth")
-        admission_dt = parse_date(row_data.get("admission_date"), "admission_date")
+        dob          = parse_date(row_data.get("date_of_birth"),  "date_of_birth", row_errors)
+        admission_dt = parse_date(row_data.get("admission_date"), "admission_date", row_errors)
 
         if row_errors:
             skipped += 1
@@ -647,7 +635,6 @@ async def bulk_upload_students(
             ))
 
         if class_id and academic_year_id and start_date:
-            from app.models.enrollment import Enrollment
             db.add(Enrollment(
                 school_id        = school.id,
                 student_id       = student.id,
@@ -691,9 +678,6 @@ async def enable_student_portal(
     Falls back to student_number if no DOB.
     Student must change PIN on first login.
     """
-    from pwdlib import PasswordHash
-    from pwdlib.hashers.argon2 import Argon2Hasher
-
     if user.role not in ("school_admin", "headteacher"):
         raise HTTPException(403, "Only admin or headteacher can enable portal access")
 
@@ -708,8 +692,6 @@ async def enable_student_portal(
         raise HTTPException(404, "Student not found")
 
     # Check school has portal enabled for this student's level
-    from app.models.enrollment import Enrollment
-    from app.models.academic import Class as ClassModel, AcademicYear
     year_res = await db.execute(
         select(AcademicYear).where(
             AcademicYear.school_id == school.id,
@@ -741,7 +723,6 @@ async def enable_student_portal(
                     f"Enable it in school settings first."
                 )
 
-    # Generate default PIN
     pwd = PasswordHash((Argon2Hasher(),))
     if student.date_of_birth:
         default_pin = student.date_of_birth.strftime("%d%m%Y")
@@ -796,9 +777,6 @@ async def reset_student_pin(
     Reset student PIN to default (date of birth or student number).
     Used when student forgets PIN.
     """
-    from pwdlib import PasswordHash
-    from pwdlib.hashers.argon2 import Argon2Hasher
-
     if user.role not in ("school_admin", "headteacher", "teacher"):
         raise HTTPException(403, "Not authorised to reset PIN")
 
@@ -842,11 +820,6 @@ async def bulk_enable_portal(
     Enable portal for all active students in a class at once.
     Useful at start of term.
     """
-    from pwdlib import PasswordHash
-    from pwdlib.hashers.argon2 import Argon2Hasher
-    from app.models.enrollment import Enrollment
-    from app.models.academic import AcademicYear
-
     if user.role not in ("school_admin", "headteacher"):
         raise HTTPException(403, "Only admin or headteacher can bulk enable portal")
 
@@ -909,7 +882,7 @@ async def transfer_student_in(
     db: DB,
     class_id: UUID = None,
     academic_year_id: UUID = None,
-    start_date: date = None,
+    start_date: Optional[date_type] = None,
     previous_school: Optional[str] = None,
     notes: Optional[str] = None,
 ):
@@ -918,8 +891,6 @@ async def transfer_student_in(
     Creates enrollment in the specified class.
     Updates student status to active.
     """
-    from app.models.enrollment import Enrollment
-
     result = await db.execute(
         select(Student).where(
             Student.id == student_id,

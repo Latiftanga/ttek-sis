@@ -4,23 +4,11 @@ import toast from "react-hot-toast";
 import { Upload, FileSpreadsheet, Download, CheckCircle2, XCircle } from "lucide-react";
 import Modal from "@/components/ui/Modal";
 import Button from "@/components/ui/Button";
-import { studentsApi } from "@/lib/api";
+import { studentsApi, type BulkUploadResult } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
-interface UploadError {
-  row: number;
-  data: { student_number: string; name: string };
-  errors: string[];
-}
-
-interface UploadResult {
-  imported: number;
-  skipped: number;
-  errors: UploadError[];
-  message: string;
-}
 
 interface BulkUploadModalProps {
   open: boolean;
@@ -35,7 +23,7 @@ export default function BulkUploadModal({ open, onClose }: BulkUploadModalProps)
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [downloading, setDownloading] = useState(false);
-  const [result, setResult] = useState<UploadResult | null>(null);
+  const [result, setResult] = useState<BulkUploadResult | null>(null);
 
   function handleClose() {
     setSelectedFile(null);
@@ -74,12 +62,12 @@ export default function BulkUploadModal({ open, onClose }: BulkUploadModalProps)
     setUploading(true);
     try {
       const data = await studentsApi.bulkUpload(selectedFile);
-      setResult(data as UploadResult);
+      setResult(data);
       // reset input so the same file can be re-uploaded after fixing errors
       if (fileInputRef.current) fileInputRef.current.value = "";
       qc.invalidateQueries({ queryKey: [school?.slug, "students"] });
-      if ((data as UploadResult).imported > 0) {
-        toast.success((data as UploadResult).message);
+      if (data.imported > 0) {
+        toast.success(data.message);
       }
     } catch (err: unknown) {
       const msg =

@@ -107,8 +107,7 @@ export default function StudentForm({ student, onSuccess, onCancel }: StudentFor
 
     try {
       if (isEdit) {
-        const { student_number: _sn, ...updatePayload } = clean;
-        void _sn;
+        const { student_number: _, ...updatePayload } = clean;
         await update.mutateAsync(updatePayload);
         toast.success("Student updated");
       } else {

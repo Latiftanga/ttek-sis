@@ -55,6 +55,10 @@ export default function AvatarUpload({
 
   async function handleFile(file: File) {
     if (!file.type.startsWith("image/")) return;
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Image must be under 5 MB");
+      return;
+    }
     try {
       const dataUrl = await compressImage(file);
       onChange(dataUrl);

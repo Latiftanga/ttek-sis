@@ -51,6 +51,13 @@ export const authApi = {
 };
 
 // ── Students ────────────────────────────────────────────────────────────
+export interface BulkUploadResult {
+  imported: number;
+  skipped: number;
+  errors: { row: number; data: { student_number: string; name: string }; errors: string[] }[];
+  message: string;
+}
+
 export const studentsApi = {
   list: (params?: Record<string, string | number>) =>
     api.get("/students/", { params }).then((r) => r.data),
@@ -70,7 +77,7 @@ export const studentsApi = {
     api.post(`/students/${id}/reset-pin`).then((r) => r.data),
   downloadTemplate: () =>
     api.get("/students/upload/template", { responseType: "blob" }),
-  bulkUpload: (file: File, params?: Record<string, string>) => {
+  bulkUpload: (file: File, params?: Record<string, string>): Promise<BulkUploadResult> => {
     const form = new FormData();
     form.append("file", file);
     return api
