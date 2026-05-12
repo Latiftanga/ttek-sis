@@ -26,6 +26,10 @@
   box-sizing: border-box;
 }
 
+button:not(:disabled) {
+  cursor: pointer;
+}
+
 body {
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }
