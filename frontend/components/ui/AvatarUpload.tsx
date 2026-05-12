@@ -19,7 +19,8 @@ function compressImage(file: File): Promise<string> {
       const img = new Image();
       img.onerror = () => reject(new Error("Could not load image"));
       img.onload = () => {
-        const MAX = 240;
+        // 128px covers 2× retina for the largest display (64px CSS); ~8–12 KB as base64
+        const MAX = 128;
         let { width, height } = img;
         if (width > height) {
           if (width > MAX) { height = Math.round((height * MAX) / width); width = MAX; }
@@ -30,7 +31,7 @@ function compressImage(file: File): Promise<string> {
         canvas.width = width;
         canvas.height = height;
         canvas.getContext("2d")?.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL("image/jpeg", 0.82));
+        resolve(canvas.toDataURL("image/jpeg", 0.75));
       };
       img.src = e.target?.result as string;
     };
