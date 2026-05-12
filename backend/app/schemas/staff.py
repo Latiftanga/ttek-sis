@@ -1,7 +1,7 @@
 from uuid import UUID
 from datetime import date, datetime
 from typing import Optional, Literal
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator, model_validator
 
 StaffStatus = Literal["active", "on_leave", "transferred", "retired"]
 StaffGender = Literal["male", "female"]
@@ -27,6 +27,18 @@ class QualificationCreate(BaseModel):
     cert_type:     Optional[Literal["degree", "diploma", "professional", "short_course"]] = None
     notes:         Optional[str] = None
 
+    @field_validator("title", mode="before")
+    @classmethod
+    def strip_title(cls, v: Optional[str]) -> Optional[str]:
+        return v.strip() if v is not None else v
+
+    @field_validator("year_obtained")
+    @classmethod
+    def validate_year(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and not (1900 <= v <= datetime.now().year):
+            raise ValueError("Year must be between 1900 and current year")
+        return v
+
 
 class QualificationResponse(BaseModel):
     id:            UUID
@@ -49,6 +61,18 @@ class PromotionCreate(BaseModel):
     promotion_type: Literal["substantive", "acting"] = "substantive"
     reference_no:   Optional[str] = None
     notes:          Optional[str] = None
+
+    @field_validator("to_rank", mode="before")
+    @classmethod
+    def strip_rank(cls, v: str) -> str:
+        return v.strip()
+
+    @field_validator("effective_date")
+    @classmethod
+    def not_future(cls, v: date) -> date:
+        if v > date.today():
+            raise ValueError("Effective date cannot be in the future")
+        return v
 
 
 class PromotionResponse(BaseModel):
@@ -85,6 +109,20 @@ class StaffCreate(BaseModel):
     password: Optional[str]     = None
     role:     StaffRole         = "teacher"
 
+    @field_validator("first_name", "last_name", mode="before")
+    @classmethod
+    def strip_names(cls, v: str) -> str:
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("Name cannot be blank")
+        return stripped
+
+    @model_validator(mode="after")
+    def account_fields_require_email(self) -> "StaffCreate":
+        if (self.password or self.role != "teacher") and not self.email:
+            raise ValueError("email is required when providing password or role")
+        return self
+
 
 class StaffUpdate(BaseModel):
     staff_number:   Optional[str]         = None
@@ -101,6 +139,16 @@ class StaffUpdate(BaseModel):
     date_joined:    Optional[date]        = None
     status:         Optional[StaffStatus] = None
 
+    @field_validator("first_name", "last_name", mode="before")
+    @classmethod
+    def strip_names(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("Name cannot be blank")
+        return stripped
+
 
 class InviteStaff(BaseModel):
     email:    EmailStr
@@ -113,7 +161,6 @@ class InviteStaff(BaseModel):
 class StaffSummary(BaseModel):
     """Lightweight — used in list endpoints (no child records)."""
     id:             UUID
-    school_id:      UUID
     staff_number:   Optional[str]  = None
     first_name:     str
     middle_name:    Optional[str]  = None
@@ -126,7 +173,7 @@ class StaffSummary(BaseModel):
     specialization: Optional[str]  = None
     date_joined:    Optional[date] = None
     status:         str
-    current_rank:   Optional[str]  = None   # resolved from latest promotion
+    current_rank:   Optional[str]  = None
     user:           Optional[UserBrief] = None
     created_at:     datetime
     updated_at:     datetime
