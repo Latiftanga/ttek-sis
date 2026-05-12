@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft, Phone, Mail, Calendar, Pencil,
@@ -61,7 +61,6 @@ function InfoRow({ label, value }: { label: string; value?: string | null }) {
 
 export default function StaffDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const router = useRouter();
   const currentUser = useAuthStore((s) => s.user);
 
   const { data: member, isLoading } = useStaffMember(id);
@@ -85,17 +84,19 @@ export default function StaffDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50 dark:bg-gray-950">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--brand)] border-t-transparent" />
+      <div className="mx-auto max-w-3xl space-y-5">
+        <div className="h-8 w-32 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700" />
+        <div className="h-40 animate-pulse rounded-xl bg-gray-200 dark:bg-gray-700" />
+        <div className="h-32 animate-pulse rounded-xl bg-gray-200 dark:bg-gray-700" />
       </div>
     );
   }
 
   if (!member) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-gray-50 dark:bg-gray-950">
+      <div className="flex flex-col items-center justify-center py-24 text-center">
         <p className="text-gray-500 dark:text-gray-400">Staff member not found.</p>
-        <Link href="/staff">
+        <Link href="/staff" className="mt-4">
           <Button variant="secondary" size="sm"><ArrowLeft className="h-4 w-4" /> Back to Staff</Button>
         </Link>
       </div>
@@ -103,25 +104,23 @@ export default function StaffDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
-      {/* Top bar */}
-      <div className="border-b border-gray-200 bg-white px-4 py-4 dark:border-gray-800 dark:bg-gray-900 sm:px-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <button
-            onClick={() => router.back()}
-            className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
-          >
-            <ArrowLeft className="h-4 w-4" />Back
-          </button>
-          {canEdit && (
-            <Button size="sm" variant="secondary" onClick={() => setEditOpen(true)}>
-              <Pencil className="h-4 w-4" />Edit
-            </Button>
-          )}
-        </div>
+    <div className="mx-auto max-w-3xl space-y-6">
+      {/* Back link + edit action */}
+      <div className="flex items-center justify-between gap-3">
+        <Link
+          href="/staff"
+          className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+        >
+          <ArrowLeft className="h-4 w-4" />Back to Staff
+        </Link>
+        {canEdit && (
+          <Button size="sm" variant="secondary" onClick={() => setEditOpen(true)}>
+            <Pencil className="h-4 w-4" />Edit
+          </Button>
+        )}
       </div>
 
-      <div className="mx-auto max-w-3xl space-y-6 p-4 sm:p-6">
+      <div className="space-y-6">
 
         {/* Profile card */}
         <div className="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">

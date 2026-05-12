@@ -17,6 +17,7 @@ import { formatDate, getInitials, getApiError, capitalize } from "@/lib/utils";
 import Button from "@/components/ui/Button";
 import Badge, { statusBadge } from "@/components/ui/Badge";
 import Drawer from "@/components/ui/Drawer";
+import Modal from "@/components/ui/Modal";
 import StudentForm from "@/components/students/StudentForm";
 import AddContactModal from "@/components/students/AddContactModal";
 
@@ -460,43 +461,23 @@ export default function StudentDetailPage() {
       />
 
       {/* delete confirmation */}
-      {confirmDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-            onClick={() => setConfirmDelete(false)}
-          />
-          <div className="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl dark:bg-gray-900">
-            <h3 className="text-base font-semibold text-gray-900 dark:text-white">
-              Delete Student?
-            </h3>
-            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-              This will permanently delete{" "}
-              <strong>
-                {student.first_name} {student.last_name}
-              </strong>{" "}
-              and all their records. This cannot be undone.
-            </p>
-            <div className="mt-5 flex justify-end gap-3">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setConfirmDelete(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="danger"
-                size="sm"
-                loading={deleteStudent.isPending}
-                onClick={handleDelete}
-              >
-                Delete
-              </Button>
-            </div>
-          </div>
+      <Modal open={confirmDelete} onClose={() => setConfirmDelete(false)} title="Delete Student?" size="sm">
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          This will permanently delete{" "}
+          <strong>
+            {student.first_name} {student.last_name}
+          </strong>{" "}
+          and all their records. This cannot be undone.
+        </p>
+        <div className="mt-5 flex justify-end gap-3">
+          <Button variant="secondary" size="sm" onClick={() => setConfirmDelete(false)}>
+            Cancel
+          </Button>
+          <Button variant="danger" size="sm" loading={deleteStudent.isPending} onClick={handleDelete}>
+            Delete
+          </Button>
         </div>
-      )}
+      </Modal>
     </div>
   );
 }

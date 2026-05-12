@@ -3,15 +3,16 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import {
   Search, UserPlus, Users, ChevronLeft, ChevronRight,
-  MoreHorizontal, Eye, Pencil, Trash2, Phone,
+  MoreHorizontal, Eye, Pencil, Trash2, Phone, Upload,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useStaff, useDeleteStaff, type Staff } from "@/lib/hooks/useStaff";
 import { formatDate, getInitials, getApiError } from "@/lib/utils";
 import Button from "@/components/ui/Button";
-import Badge from "@/components/ui/Badge";
 import Drawer from "@/components/ui/Drawer";
+import Modal from "@/components/ui/Modal";
 import StaffForm from "@/components/staff/StaffForm";
+import StaffBulkUploadModal from "@/components/staff/BulkUploadModal";
 
 const STATUS_TABS = [
   { key: "",            label: "All" },
@@ -85,6 +86,7 @@ export default function StaffPage() {
   const [drawerOpen,  setDrawerOpen]  = useState(false);
   const [editMember,  setEditMember]  = useState<Staff | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Staff | null>(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
   const [menuPos,  setMenuPos]  = useState<{ top: number; right: number }>({ top: 0, right: 0 });
   const menuRef = useRef<HTMLDivElement>(null);
@@ -108,11 +110,12 @@ export default function StaffPage() {
         setMenuOpen(null);
       }
     }
+    function scrollHandler() { setMenuOpen(null); }
     document.addEventListener("mousedown", handler);
-    document.addEventListener("scroll", () => setMenuOpen(null), true);
+    document.addEventListener("scroll", scrollHandler, true);
     return () => {
       document.removeEventListener("mousedown", handler);
-      document.removeEventListener("scroll", () => setMenuOpen(null), true);
+      document.removeEventListener("scroll", scrollHandler, true);
     };
   }, []);
 
@@ -144,7 +147,7 @@ export default function StaffPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+    <div>
       {/* Header */}
       <div className="border-b border-gray-200 bg-white px-4 py-4 dark:border-gray-800 dark:bg-gray-900 sm:px-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -152,10 +155,14 @@ export default function StaffPage() {
             <Users className="h-5 w-5 text-gray-400" />
             <h1 className="text-lg font-semibold text-gray-900 dark:text-white">Staff</h1>
           </div>
-          <Button onClick={openAdd} size="sm">
-            <UserPlus className="h-4 w-4" />
-            Add Staff
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" size="sm" onClick={() => setBulkOpen(true)}>
+              <Upload className="h-4 w-4" />Bulk Upload
+            </Button>
+            <Button onClick={openAdd} size="sm">
+              <UserPlus className="h-4 w-4" />Add Staff
+            </Button>
+          </div>
         </div>
 
         {/* Filters */}
@@ -270,7 +277,7 @@ export default function StaffPage() {
                   </td>
                   <td className="px-4 py-3">
                     <button
-                      onClick={(e) => openMenu(e, menuOpen === member.id ? "" : member.id)}
+                      onClick={(e) => { if (menuOpen === member.id) setMenuOpen(null); else openMenu(e, member.id); }}
                       className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
                       aria-label="Actions"
                     >
@@ -347,28 +354,26 @@ export default function StaffPage() {
         />
       </Drawer>
 
+      {/* Bulk upload modal */}
+      <StaffBulkUploadModal open={bulkOpen} onClose={() => setBulkOpen(false)} />
+
       {/* Deactivate confirm */}
-      {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-2xl dark:bg-gray-900">
-            <h3 className="text-base font-semibold text-gray-900 dark:text-white">Deactivate staff member?</h3>
-            <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-              <strong>{deleteTarget.first_name} {deleteTarget.last_name}</strong> will be marked as retired
-              and their login (if any) will be disabled.
-            </p>
-            <div className="mt-5 flex justify-end gap-3">
-              <Button variant="secondary" onClick={() => setDeleteTarget(null)}>Cancel</Button>
-              <Button
-                variant="danger"
-                loading={deleteStaff.isPending}
-                onClick={() => confirmDelete(deleteTarget)}
-              >
-                Deactivate
-              </Button>
-            </div>
-          </div>
+      <Modal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="Deactivate Staff Member?" size="sm">
+        <p className="text-sm text-gray-600 dark:text-gray-400">
+          <strong>{deleteTarget?.first_name} {deleteTarget?.last_name}</strong> will be marked as retired
+          and their login (if any) will be disabled.
+        </p>
+        <div className="mt-5 flex justify-end gap-3">
+          <Button variant="secondary" onClick={() => setDeleteTarget(null)}>Cancel</Button>
+          <Button
+            variant="danger"
+            loading={deleteStaff.isPending}
+            onClick={() => deleteTarget && confirmDelete(deleteTarget)}
+          >
+            Deactivate
+          </Button>
         </div>
-      )}
+      </Modal>
     </div>
   );
 }

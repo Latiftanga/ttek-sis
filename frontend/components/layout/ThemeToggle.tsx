@@ -11,10 +11,10 @@ const icons: Record<Theme, React.ElementType> = {
   dark: Moon,
 };
 
-const labels: Record<Theme, string> = {
-  system: "System theme",
-  light: "Light mode",
-  dark: "Dark mode",
+const actionLabels: Record<Theme, string> = {
+  system: "Switch to system theme",
+  light: "Switch to light mode",
+  dark: "Switch to dark mode",
 };
 
 export default function ThemeToggle({ className }: { className?: string }) {
@@ -26,10 +26,12 @@ export default function ThemeToggle({ className }: { className?: string }) {
     setTheme(next);
   };
 
+  const nextTheme = themes[(themes.indexOf(theme) + 1) % themes.length];
+
   return (
     <button
       onClick={cycle}
-      aria-label={labels[theme]}
+      aria-label={actionLabels[nextTheme]}
       className={cn(
         "rounded-lg p-1.5 transition-colors",
         "text-gray-500 hover:bg-gray-100 hover:text-gray-700",

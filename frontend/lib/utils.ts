@@ -7,7 +7,15 @@ export function cn(...inputs: ClassValue[]) {
 
 export function formatDate(date: string | null | undefined): string {
   if (!date) return "—";
-  return new Date(date).toLocaleDateString("en-GB", {
+  // Date-only strings (YYYY-MM-DD) are UTC midnight per spec — parse as local to avoid off-by-one day in negative-offset timezones
+  let d: Date;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    const [y, m, day] = date.split("-").map(Number);
+    d = new Date(y, m - 1, day);
+  } else {
+    d = new Date(date);
+  }
+  return d.toLocaleDateString("en-GB", {
     day: "numeric",
     month: "short",
     year: "numeric",
@@ -30,10 +38,10 @@ export const ROLES: Record<string, string> = {
   accountant: "Accountant",
 };
 
-export function getApiError(err: unknown): string {
+export function getApiError(err: unknown, fallback = "Something went wrong"): string {
   return (
     (err as { response?: { data?: { detail?: string } } })?.response?.data
-      ?.detail ?? "Something went wrong"
+      ?.detail ?? fallback
   );
 }
 

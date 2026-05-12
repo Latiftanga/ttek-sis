@@ -7,6 +7,7 @@ import { z } from "zod";
 import toast from "react-hot-toast";
 import { authApi } from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
+import { getApiError } from "@/lib/utils";
 import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
 import ThemeToggle from "@/components/layout/ThemeToggle";
@@ -36,10 +37,7 @@ export default function LoginPage() {
       setAuth(res.user, res.school, res.access_token, res.refresh_token);
       router.replace("/dashboard");
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { detail?: string } } })?.response?.data
-          ?.detail ?? "Login failed. Check your credentials.";
-      toast.error(msg);
+      toast.error(getApiError(err, "Login failed. Check your credentials."));
     } finally {
       setLoading(false);
     }
