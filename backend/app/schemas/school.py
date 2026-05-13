@@ -42,3 +42,29 @@ class SchoolResponse(SchoolBase):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class ProgrammeCreate(BaseModel):
+    name: str
+    short_name: str
+    description: Optional[str] = None
+    order: int = 1
+
+
+class ProgrammeUpdate(BaseModel):
+    name: Optional[str] = None
+    short_name: Optional[str] = None
+    description: Optional[str] = None
+    order: Optional[int] = None
+
+
+class HouseCreate(BaseModel):
+    name: str
+    color: Optional[str] = None
+    order: int = 1
+
+
+class HouseUpdate(BaseModel):
+    name: Optional[str] = None
+    color: Optional[str] = None
+    order: Optional[int] = None

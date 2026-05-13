@@ -155,10 +155,22 @@ export const staffApi = {
 
 // ── School ──────────────────────────────────────────────────────────────
 export const schoolApi = {
-  listProgrammes: (): Promise<{ id: string; name: string }[]> =>
-    api.get("/school/programmes").then((r) => r.data),
+  listProgrammes: (ownOnly = false): Promise<{ id: string; name: string; short_name: string | null; description: string | null }[]> =>
+    api.get("/school/programmes", { params: ownOnly ? { own_only: true } : {} }).then((r) => r.data),
+  createProgramme: (body: { name: string; short_name: string; description?: string; order?: number }) =>
+    api.post("/school/programmes", body).then((r) => r.data),
+  updateProgramme: (id: string, body: { name?: string; short_name?: string; description?: string; order?: number }) =>
+    api.patch(`/school/programmes/${id}`, body).then((r) => r.data),
+  deleteProgramme: (id: string) =>
+    api.delete(`/school/programmes/${id}`),
   listHouses: (): Promise<{ id: string; name: string; color: string | null }[]> =>
     api.get("/school/houses").then((r) => r.data),
+  createHouse: (body: { name: string; color?: string; order?: number }) =>
+    api.post("/school/houses", body).then((r) => r.data),
+  updateHouse: (id: string, body: { name?: string; color?: string; order?: number }) =>
+    api.patch(`/school/houses/${id}`, body).then((r) => r.data),
+  deleteHouse: (id: string) =>
+    api.delete(`/school/houses/${id}`),
 };
 
 // ── Academic ────────────────────────────────────────────────────────────

@@ -15,6 +15,7 @@ class SystemProgramme(Base):
 
     id          = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name        = Column(String(100), unique=True, nullable=False)
+    short_name  = Column(String(20), nullable=True)   # e.g. "SC", "ART", "BUS"
     description = Column(Text)
     order       = Column(Integer, default=1)
     is_active   = Column(Boolean, default=True)
@@ -37,6 +38,7 @@ class SchoolProgramme(Base):
                         ForeignKey("schools.id", ondelete="CASCADE"),
                         nullable=False)
     name        = Column(String(100), nullable=False)
+    short_name  = Column(String(20), nullable=True)   # e.g. "SC", "ART", "BUS"
     description = Column(Text)
     order       = Column(Integer, default=1)
     is_active   = Column(Boolean, default=True)

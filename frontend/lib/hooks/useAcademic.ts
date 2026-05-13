@@ -64,6 +64,8 @@ export interface ClassStudent {
 export interface SchoolProgramme {
   id: string;
   name: string;
+  short_name: string | null;
+  description: string | null;
 }
 
 export interface SchoolHouse {
@@ -131,11 +133,11 @@ export function useSubjects() {
   });
 }
 
-export function useSchoolProgrammes() {
+export function useSchoolProgrammes(ownOnly = false) {
   const slug = useSlug();
   return useQuery<SchoolProgramme[]>({
-    queryKey: ["school-programmes", slug],
-    queryFn: () => schoolApi.listProgrammes(),
+    queryKey: ["school-programmes", slug, ownOnly],
+    queryFn: () => schoolApi.listProgrammes(ownOnly),
     enabled: !!slug,
     staleTime: Infinity,
   });
@@ -148,6 +150,64 @@ export function useSchoolHouses() {
     queryFn: () => schoolApi.listHouses(),
     enabled: !!slug,
     staleTime: Infinity,
+  });
+}
+
+export function useCreateProgramme() {
+  const qc = useQueryClient();
+  const slug = useSlug();
+  return useMutation({
+    mutationFn: (body: { name: string; short_name: string; description?: string; order?: number }) =>
+      schoolApi.createProgramme(body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["school-programmes", slug] }),
+  });
+}
+
+export function useUpdateProgramme() {
+  const qc = useQueryClient();
+  const slug = useSlug();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string; name?: string; short_name?: string; description?: string }) =>
+      schoolApi.updateProgramme(id, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["school-programmes", slug] }),
+  });
+}
+
+export function useDeleteProgramme() {
+  const qc = useQueryClient();
+  const slug = useSlug();
+  return useMutation({
+    mutationFn: (id: string) => schoolApi.deleteProgramme(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["school-programmes", slug] }),
+  });
+}
+
+export function useCreateHouse() {
+  const qc = useQueryClient();
+  const slug = useSlug();
+  return useMutation({
+    mutationFn: (body: { name: string; color?: string; order?: number }) =>
+      schoolApi.createHouse(body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["school-houses", slug] }),
+  });
+}
+
+export function useUpdateHouse() {
+  const qc = useQueryClient();
+  const slug = useSlug();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string; name?: string; color?: string }) =>
+      schoolApi.updateHouse(id, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["school-houses", slug] }),
+  });
+}
+
+export function useDeleteHouse() {
+  const qc = useQueryClient();
+  const slug = useSlug();
+  return useMutation({
+    mutationFn: (id: string) => schoolApi.deleteHouse(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["school-houses", slug] }),
   });
 }
 

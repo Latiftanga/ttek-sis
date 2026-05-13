@@ -29,7 +29,6 @@ const LEVEL_NUMBERS: Record<string, number[]> = {
   basic: [1, 2, 3, 4, 5, 6, 7, 8, 9], shs: [1, 2, 3],
 };
 
-const STREAMS = ["A", "B", "C", "D", "E"];
 
 // ── Name preview (mirrors backend Class.generate_name) ────────────────────
 
@@ -42,13 +41,17 @@ function previewName(
   const label = LEVEL_GROUP_LABELS[levelGroup] ?? levelGroup.toUpperCase();
   if (levelGroup === "creche") return stream ? `${label} ${stream}` : label;
   if (!levelNumber) return label;
+
+  // SHS: "{level_number}{short_name} {stream}" e.g. "1SC A"
+  if (levelGroup === "shs") {
+    let name = `${levelNumber}`;
+    if (programme) name = `${name}${programme}`;
+    if (stream) name = `${name} ${stream}`;
+    return name;
+  }
+
   let name = `${label} ${levelNumber}`;
-  if (levelGroup === "shs" && programme) {
-    name = `${name} ${programme.replace("General ", "")}`;
-  }
-  if (stream) {
-    name = `${name}${levelGroup === "shs" ? " " : ""}${stream}`;
-  }
+  if (stream) name = `${name}${stream}`;
   return name;
 }
 
@@ -293,23 +296,21 @@ export default function ClassForm({ class_, onSuccess, onCancel }: ClassFormProp
         >
           <option value="">— Select programme —</option>
           {programmes.map((p) => (
-            <option key={p.id} value={p.name}>{p.name}</option>
+            <option key={p.id} value={p.short_name ?? p.name}>
+              {p.name}{p.short_name ? ` (${p.short_name})` : ""}
+            </option>
           ))}
         </Select>
       )}
 
       {/* Stream */}
-      <Select
+      <Input
         id="stream"
         label="Stream (optional)"
+        placeholder="e.g. A, Red, Green"
         error={createErrors.stream?.message}
         {...regCreate("stream")}
-      >
-        <option value="">— None —</option>
-        {STREAMS.map((s) => (
-          <option key={s} value={s}>{s}</option>
-        ))}
-      </Select>
+      />
 
       {/* Class teacher */}
       <Select

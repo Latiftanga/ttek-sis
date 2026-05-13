@@ -77,8 +77,7 @@ class Class(Base):
     # basic   → 1, 2, 3, 4, 5, 6, 7, 8, 9
     # shs     → 1, 2, 3
 
-    stream           = Column(String(5), nullable=True)
-    # "A" | "B" | "C" | "D" | "E"
+    stream           = Column(String(30), nullable=True)
 
     programme        = Column(String(100), nullable=True)
     # SHS only: "General Science" | "Business" | "General Arts" etc.
@@ -109,43 +108,40 @@ class Class(Base):
         Generates official GES display name.
 
         Examples:
-          creche,  None, None, None              → "Creche"
-          nursery, 1,    None, None              → "Nursery 1"
-          nursery, 2,    None, None              → "Nursery 2"
-          kg,      1,    None, None              → "KG 1"
-          kg,      2,    "A",  None              → "KG 2A"
-          basic,   1,    None, None              → "Basic 1"
-          basic,   4,    "B",  None              → "Basic 4B"
-          basic,   7,    "A",  None              → "Basic 7A"
-          shs,     1,    "A",  "General Science" → "SHS 1 Science A"
-          shs,     2,    None, "Business"        → "SHS 2 Business"
+          creche,  None, None, None   → "Creche"
+          nursery, 1,    None, None   → "Nursery 1"
+          kg,      2,    "A",  None   → "KG 2A"
+          basic,   4,    "B",  None   → "Basic 4B"
+          shs,     1,    "A",  "SC"   → "1SC A"
+          shs,     2,    "B",  "ART"  → "2ART B"
+          shs,     1,    None, "BUS"  → "1BUS"
         """
         labels = {
             "creche":  "Creche",
             "nursery": "Nursery",
             "kg":      "KG",
             "basic":   "Basic",
-            "shs":     "SHS",
         }
-        label = labels.get(level_group, level_group.upper())
 
-        # Creche only — no number
+        # Creche — no number
         if level_group == "creche":
+            label = labels["creche"]
             return f"{label} {stream}" if stream else label
 
+        # SHS — format is "{level_number}{short_name} {stream}", e.g. "1SC A"
+        if level_group == "shs":
+            name = f"{level_number}"
+            if programme:
+                name = f"{name}{programme}"
+            if stream:
+                name = f"{name} {stream}"
+            return name
+
+        # Basic / KG / Nursery — "{Label} {level_number}{stream}"
+        label = labels.get(level_group, level_group.upper())
         name = f"{label} {level_number}"
-
-        # SHS — add short programme name before stream
-        if level_group == "shs" and programme:
-            short = programme.replace("General ", "")
-            name = f"{name} {short}"
-
         if stream:
-            # SHS already has programme in name, add space before stream
-            # Non-SHS: "Basic 4B" (no space), SHS: "SHS 1 Science A" (space)
-            separator = " " if level_group == "shs" else ""
-            name = f"{name}{separator}{stream}"
-
+            name = f"{name}{stream}"
         return name
 
     @property

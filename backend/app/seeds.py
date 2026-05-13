@@ -105,32 +105,30 @@ async def seed_grading_scales(db: AsyncSession) -> None:
 # ══════════════════════════════════════════════════════════════════════════
 
 GES_PROGRAMMES = [
-    ("General Science",
-     "Physics, Chemistry, Biology, Elective Mathematics", 1),
-    ("General Arts",
-     "Literature, History, Government, Economics", 2),
-    ("Business",
-     "Financial Accounting, Business Management, Cost Accounting, Economics", 3),
-    ("Home Economics",
-     "Food & Nutrition, Clothing & Textiles, Management in Living", 4),
-    ("Visual Arts",
-     "Graphic Design, Sculpture, Ceramics, Picture Making", 5),
-    ("Technical",
-     "Technical Drawing, Auto Mechanics, Building Construction", 6),
-    ("Agriculture",
-     "Crop Science, Animal Science, Agribusiness, Farm Management", 7),
+    # (name, short_name, description, order)
+    ("General Science",  "SC",    "Physics, Chemistry, Biology, Elective Mathematics",                1),
+    ("General Arts",     "ART",   "Literature, History, Government, Economics",                       2),
+    ("Business",         "BUS",   "Financial Accounting, Business Management, Cost Accounting, Economics", 3),
+    ("Home Economics",   "HEC",   "Food & Nutrition, Clothing & Textiles, Management in Living",      4),
+    ("Visual Arts",      "VA",    "Graphic Design, Sculpture, Ceramics, Picture Making",              5),
+    ("Technical",        "TECH",  "Technical Drawing, Auto Mechanics, Building Construction",         6),
+    ("Agriculture",      "AGRIC", "Crop Science, Animal Science, Agribusiness, Farm Management",      7),
 ]
 
 
 async def seed_system_programmes(db: AsyncSession) -> None:
-    for name, description, order in GES_PROGRAMMES:
-        exists = await db.execute(
+    for name, short_name, description, order in GES_PROGRAMMES:
+        result = await db.execute(
             select(SystemProgramme).where(SystemProgramme.name == name)
         )
-        if exists.scalar_one_or_none():
+        existing = result.scalar_one_or_none()
+        if existing:
+            if existing.short_name != short_name:
+                existing.short_name = short_name
             continue
         db.add(SystemProgramme(
             name=name,
+            short_name=short_name,
             description=description,
             order=order,
         ))
