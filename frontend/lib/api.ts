@@ -157,6 +157,8 @@ export const staffApi = {
 export const schoolApi = {
   listProgrammes: (): Promise<{ id: string; name: string }[]> =>
     api.get("/school/programmes").then((r) => r.data),
+  listHouses: (): Promise<{ id: string; name: string; color: string | null }[]> =>
+    api.get("/school/houses").then((r) => r.data),
 };
 
 // ── Academic ────────────────────────────────────────────────────────────

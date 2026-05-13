@@ -11,7 +11,7 @@ import Textarea from "@/components/ui/Textarea";
 import Button from "@/components/ui/Button";
 import AvatarUpload from "@/components/ui/AvatarUpload";
 import { useCreateStudent, useUpdateStudent, type Student } from "@/lib/hooks/useStudents";
-import { useClasses, useAcademicYears } from "@/lib/hooks/useAcademic";
+import { useClasses, useAcademicYears, useSchoolProgrammes, useSchoolHouses } from "@/lib/hooks/useAcademic";
 import { academicApi } from "@/lib/api";
 import { uploadApi } from "@/lib/api";
 import { getInitials, getApiError } from "@/lib/utils";
@@ -50,6 +50,8 @@ export default function StudentForm({ student, onSuccess, onCancel }: StudentFor
 
   const { data: classes = [] } = useClasses();
   const { data: years = [] } = useAcademicYears();
+  const { data: programmes = [] } = useSchoolProgrammes();
+  const { data: houses = [] } = useSchoolHouses();
   const currentYear = years.find((y) => y.is_current) ?? years[0];
 
   const [photo, setPhoto] = useState<string | null>(student?.photo_url ?? null);
@@ -190,8 +192,20 @@ export default function StudentForm({ student, onSuccess, onCancel }: StudentFor
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <Input id="house" label="House" placeholder="e.g. Unity" error={errors.house?.message} {...register("house")} />
-        <Input id="programme" label="Programme" placeholder="e.g. General Science" error={errors.programme?.message} {...register("programme")} />
+        {houses.length > 0 && (
+          <Select id="house" label="House" error={errors.house?.message} {...register("house")}>
+            <option value="">— Select house —</option>
+            {houses.map((h) => (
+              <option key={h.id} value={h.name}>{h.name}</option>
+            ))}
+          </Select>
+        )}
+        <Select id="programme" label="Programme" error={errors.programme?.message} {...register("programme")}>
+          <option value="">— Select programme —</option>
+          {programmes.map((p) => (
+            <option key={p.id} value={p.name}>{p.name}</option>
+          ))}
+        </Select>
       </div>
 
       <Textarea id="home_address" label="Home Address" placeholder="P.O. Box 123, Accra" error={errors.home_address?.message} {...register("home_address")} />

@@ -3,6 +3,7 @@ from sqlalchemy import select
 
 from app.dependencies import CurrentUser, CurrentSchool, DB
 from app.models.programme import SchoolProgramme, SystemProgramme
+from app.models.school_house import SchoolHouse
 
 router = APIRouter()
 
@@ -34,3 +35,17 @@ async def list_school_programmes(user: CurrentUser, school: CurrentSchool, db: D
         .order_by(SystemProgramme.order)
     )
     return [{"id": str(p.id), "name": p.name} for p in sys_result.scalars().all()]
+
+
+@router.get("/school/houses")
+async def list_school_houses(user: CurrentUser, school: CurrentSchool, db: DB):
+    result = await db.execute(
+        select(SchoolHouse)
+        .where(
+            SchoolHouse.school_id == school.id,
+            SchoolHouse.is_active.is_(True),
+        )
+        .order_by(SchoolHouse.order)
+    )
+    houses = result.scalars().all()
+    return [{"id": str(h.id), "name": h.name, "color": h.color} for h in houses]

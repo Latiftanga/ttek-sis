@@ -66,6 +66,12 @@ export interface SchoolProgramme {
   name: string;
 }
 
+export interface SchoolHouse {
+  id: string;
+  name: string;
+  color: string | null;
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 function useSlug() {
@@ -130,6 +136,16 @@ export function useSchoolProgrammes() {
   return useQuery<SchoolProgramme[]>({
     queryKey: ["school-programmes", slug],
     queryFn: () => schoolApi.listProgrammes(),
+    enabled: !!slug,
+    staleTime: Infinity,
+  });
+}
+
+export function useSchoolHouses() {
+  const slug = useSlug();
+  return useQuery<SchoolHouse[]>({
+    queryKey: ["school-houses", slug],
+    queryFn: () => schoolApi.listHouses(),
     enabled: !!slug,
     staleTime: Infinity,
   });
