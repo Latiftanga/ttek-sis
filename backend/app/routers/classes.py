@@ -10,7 +10,7 @@ from app.dependencies import CurrentUser, CurrentSchool, DB
 from app.models.academic import AcademicYear, Term, Class, Subject
 from app.models.enrollment import Enrollment
 from app.models.student import Student
-from app.models.programme import SchoolProgramme
+from app.models.programme import SchoolProgramme, SystemProgramme
 from app.schemas.academic import (
     AcademicYearCreate, AcademicYearUpdate, AcademicYearResponse,
     TermCreate, TermUpdate, TermResponse,
@@ -191,16 +191,50 @@ async def set_current_term(
 async def list_classes(
     user: CurrentUser, school: CurrentSchool, db: DB,
     level_group: Optional[str] = Query(None),
-    is_active: Optional[bool] = Query(True),
+    is_active: Optional[bool] = Query(None),
 ):
-    query = select(Class).where(Class.school_id == school.id)
+    query = (
+        select(Class)
+        .options(selectinload(Class.class_teacher))
+        .where(Class.school_id == school.id)
+    )
     if level_group:
         query = query.where(Class.level_group == level_group)
     if is_active is not None:
         query = query.where(Class.is_active == is_active)
     query = query.order_by(Class.level_group, Class.level_number, Class.stream)
     result = await db.execute(query)
-    return result.scalars().all()
+    classes = result.scalars().all()
+
+    out = []
+    for c in classes:
+        data = ClassResponse.model_validate(c)
+        if c.class_teacher:
+            data.class_teacher_name = (
+                f"{c.class_teacher.first_name} {c.class_teacher.last_name}"
+            )
+        out.append(data)
+    return out
+
+
+@router.get("/classes/{class_id}", response_model=ClassResponse)
+async def get_class(
+    class_id: UUID, user: CurrentUser, school: CurrentSchool, db: DB,
+):
+    result = await db.execute(
+        select(Class)
+        .options(selectinload(Class.class_teacher))
+        .where(Class.id == class_id, Class.school_id == school.id)
+    )
+    class_ = result.scalar_one_or_none()
+    if not class_:
+        raise HTTPException(404, "Class not found")
+    data = ClassResponse.model_validate(class_)
+    if class_.class_teacher:
+        data.class_teacher_name = (
+            f"{class_.class_teacher.first_name} {class_.class_teacher.last_name}"
+        )
+    return data
 
 
 @router.post("/classes", response_model=ClassResponse, status_code=201)
@@ -215,18 +249,28 @@ async def create_class(
         )
 
     if body.programme:
-        prog_exists = await db.execute(
+        # Check school-specific programmes first, then fall back to GES system programmes.
+        # This lets schools use standard GES programmes without manual setup.
+        prog_res = await db.execute(
             select(SchoolProgramme).where(
                 SchoolProgramme.school_id == school.id,
                 SchoolProgramme.name == body.programme,
                 SchoolProgramme.is_active.is_(True),
             )
         )
-        if not prog_exists.scalar_one_or_none():
-            raise HTTPException(
-                400,
-                f"Programme '{body.programme}' not found. Add it in school settings first.",
+        if not prog_res.scalar_one_or_none():
+            sys_res = await db.execute(
+                select(SystemProgramme).where(
+                    SystemProgramme.name == body.programme,
+                    SystemProgramme.is_active.is_(True),
+                )
             )
+            if not sys_res.scalar_one_or_none():
+                raise HTTPException(
+                    400,
+                    f"Programme '{body.programme}' not found. "
+                    "Use a GES standard programme or add it in school settings.",
+                )
 
     name = Class.generate_name(
         body.level_group, body.level_number, body.stream, body.programme,

@@ -3,12 +3,14 @@ import { useState, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { Copy, Check } from "lucide-react";
 import toast from "react-hot-toast";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import Button from "@/components/ui/Button";
 import AvatarUpload from "@/components/ui/AvatarUpload";
 import { useCreateStaff, useUpdateStaff, type Staff } from "@/lib/hooks/useStaff";
+import { uploadApi } from "@/lib/api";
 import { getInitials, getApiError } from "@/lib/utils";
 
 const schema = z.object({
@@ -52,7 +54,22 @@ export default function StaffForm({ staff, onSuccess, onCancel }: StaffFormProps
   const update = useUpdateStaff(staff?.id ?? "");
 
   const [photo, setPhoto] = useState<string | null>(staff?.photo_url ?? null);
+  const [uploading, setUploading] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
+  const [generatedPassword, setGeneratedPassword] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  async function handlePhotoFile(file: File) {
+    setUploading(true);
+    try {
+      const { url } = await uploadApi.photo(file);
+      setPhoto(url);
+    } catch {
+      toast.error("Photo upload failed — photo will not be saved");
+    } finally {
+      setUploading(false);
+    }
+  }
 
   const {
     register,
@@ -106,6 +123,7 @@ export default function StaffForm({ staff, onSuccess, onCancel }: StaffFormProps
       if (isEdit) {
         await update.mutateAsync(clean);
         toast.success("Staff member updated");
+        onSuccess();
       } else {
         const payload: Record<string, unknown> = { ...clean };
         if (showAccount && values.email) {
@@ -113,18 +131,31 @@ export default function StaffForm({ staff, onSuccess, onCancel }: StaffFormProps
           payload.role     = values.role ?? "teacher";
           if (values.password) payload.password = values.password;
         }
-        await create.mutateAsync(payload);
+        const result = await create.mutateAsync(payload);
         toast.success("Staff member added");
+        if (result.temp_password) {
+          setGeneratedPassword(result.temp_password);
+        } else {
+          onSuccess();
+        }
       }
-      onSuccess();
     } catch (err) {
       toast.error(getApiError(err));
     }
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
-      <AvatarUpload value={photo} initials={initials} onChange={setPhoto} size="md" />
+    <form onSubmit={handleSubmit(onSubmit)} className="relative space-y-5" noValidate>
+      <AvatarUpload
+        value={photo}
+        initials={initials}
+        onChange={setPhoto}
+        onFile={handlePhotoFile}
+        size="md"
+      />
+      {uploading && (
+        <p className="text-xs text-[var(--brand)]">Uploading photo…</p>
+      )}
 
       {/* Identity row */}
       <div className="grid grid-cols-2 gap-4">
@@ -220,10 +251,40 @@ export default function StaffForm({ staff, onSuccess, onCancel }: StaffFormProps
 
       <div className="flex justify-end gap-3 border-t border-gray-100 pt-4 dark:border-gray-800">
         <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>
-        <Button type="submit" loading={isSubmitting}>
+        <Button type="submit" loading={isSubmitting} disabled={uploading}>
           {isEdit ? "Save Changes" : "Add Staff"}
         </Button>
       </div>
+
+      {/* Generated password overlay */}
+      {generatedPassword && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-white/95 p-6 dark:bg-gray-900/95">
+          <div className="w-full max-w-sm space-y-4 text-center">
+            <p className="text-sm font-semibold text-gray-900 dark:text-white">Login account created</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Save this temporary password — it won&apos;t be shown again.
+            </p>
+            <div className="flex items-center gap-2 rounded-lg border border-[var(--brand)]/30 bg-[var(--brand)]/5 px-4 py-3">
+              <span className="flex-1 select-all font-mono text-sm font-medium tracking-wider text-gray-900 dark:text-white">
+                {generatedPassword}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(generatedPassword);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                }}
+                className="shrink-0 rounded p-1 text-gray-400 hover:text-[var(--brand)]"
+                aria-label="Copy password"
+              >
+                {copied ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
+              </button>
+            </div>
+            <Button onClick={() => { setGeneratedPassword(null); onSuccess(); }}>Done</Button>
+          </div>
+        </div>
+      )}
     </form>
   );
 }

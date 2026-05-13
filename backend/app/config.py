@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     def REDIS_URL(self) -> str:
         return f"redis://:{self.REDIS_PASSWORD}@redis:6379/0"
 
+    # File storage
+    UPLOADS_DIR: str = "uploads"
+
     # Auth
     SECRET_KEY: str
     ALGORITHM: str = "HS256"

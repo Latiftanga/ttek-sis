@@ -48,12 +48,21 @@ export default function PromotionsCard({ staffId, promotions, currentRank, canEd
     },
   });
 
+  const formatCategory = (cat: string) =>
+    cat.charAt(0).toUpperCase() + cat.slice(1);
+
   // Group ranks by category for grouped <select>
   const ranksByCategory = gesRanks.reduce<Record<string, string[]>>((acc, r) => {
     if (!acc[r.category]) acc[r.category] = [];
     acc[r.category].push(r.name);
     return acc;
   }, {});
+
+  const rankGroups = Object.entries(ranksByCategory).map(([cat, names]) => (
+    <optgroup key={cat} label={formatCategory(cat)}>
+      {names.map((n) => <option key={n} value={n}>{n}</option>)}
+    </optgroup>
+  ));
 
   async function onSubmit(values: FormValues) {
     try {
@@ -84,9 +93,6 @@ export default function PromotionsCard({ staffId, promotions, currentRank, canEd
       setRemoving(null);
     }
   }
-
-  const formatCategory = (cat: string) =>
-    cat.charAt(0).toUpperCase() + cat.slice(1);
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
@@ -180,11 +186,7 @@ export default function PromotionsCard({ staffId, promotions, currentRank, canEd
                 className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-[var(--brand)] focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
               >
                 <option value="">— None / First entry —</option>
-                {Object.entries(ranksByCategory).map(([cat, names]) => (
-                  <optgroup key={cat} label={formatCategory(cat)}>
-                    {names.map((n) => <option key={n} value={n}>{n}</option>)}
-                  </optgroup>
-                ))}
+                {rankGroups}
               </select>
             </div>
 
@@ -198,11 +200,7 @@ export default function PromotionsCard({ staffId, promotions, currentRank, canEd
                 className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-[var(--brand)] focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
               >
                 <option value="">— Select rank —</option>
-                {Object.entries(ranksByCategory).map(([cat, names]) => (
-                  <optgroup key={cat} label={formatCategory(cat)}>
-                    {names.map((n) => <option key={n} value={n}>{n}</option>)}
-                  </optgroup>
-                ))}
+                {rankGroups}
               </select>
               {errors.to_rank && (
                 <p className="mt-1 text-xs text-red-500">{errors.to_rank.message}</p>

@@ -209,17 +209,20 @@ DEFAULT_SUBJECTS = [
 
 # Each entry: (category, order, name)
 GES_RANKS: list[tuple[str, int, str]] = [
-    # ── Teaching Staff ────────────────────────────────────────────────────
-    ("teaching",  1,  "Superintendent I"),
+    # ── Teaching Staff (GES, lowest → highest) ───────────────────────────
+    ("teaching",  1,  "Pupil Teacher"),
     ("teaching",  2,  "Superintendent II"),
-    ("teaching",  3,  "Senior Superintendent II"),
-    ("teaching",  4,  "Senior Superintendent I"),
-    ("teaching",  5,  "Principal Superintendent"),
-    ("teaching",  6,  "Assistant Director II"),
-    ("teaching",  7,  "Assistant Director I"),
-    ("teaching",  8,  "Deputy Director"),
-    ("teaching",  9,  "Director II"),
-    ("teaching", 10,  "Director I"),
+    ("teaching",  3,  "Superintendent I"),
+    ("teaching",  4,  "Senior Superintendent II"),
+    ("teaching",  5,  "Senior Superintendent I"),
+    ("teaching",  6,  "Principal Superintendent"),
+    ("teaching",  7,  "Assistant Director II"),
+    ("teaching",  8,  "Assistant Director I"),
+    ("teaching",  9,  "Deputy Director"),
+    ("teaching", 10,  "Director II"),
+    ("teaching", 11,  "Director I"),
+    ("teaching", 12,  "Deputy Director-General"),
+    ("teaching", 13,  "Director-General"),
 
     # ── Accounting ────────────────────────────────────────────────────────
     ("accounting", 1, "Principal Accountant"),
@@ -272,12 +275,16 @@ GES_RANKS: list[tuple[str, int, str]] = [
 
 
 async def seed_ges_ranks(db: AsyncSession) -> None:
-    """Idempotent — skips ranks that already exist by name."""
+    """Idempotent — inserts new ranks and corrects category/order for existing ones."""
     for category, order, name in GES_RANKS:
-        exists = await db.execute(select(GESRank).where(GESRank.name == name))
-        if exists.scalar_one_or_none():
-            continue
-        db.add(GESRank(name=name, category=category, order=order))
+        result = await db.execute(select(GESRank).where(GESRank.name == name))
+        existing = result.scalar_one_or_none()
+        if existing:
+            if existing.order != order or existing.category != category:
+                existing.order = order
+                existing.category = category
+        else:
+            db.add(GESRank(name=name, category=category, order=order))
     await db.commit()
 
 

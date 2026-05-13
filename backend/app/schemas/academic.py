@@ -179,6 +179,7 @@ class ClassResponse(BaseModel):
     capacity: int
     is_active: bool
     class_teacher_id: Optional[UUID] = None
+    class_teacher_name: Optional[str] = None  # populated by the router via eager-load
     is_bece_level: bool
     is_wassce_level: bool
     created_at: datetime

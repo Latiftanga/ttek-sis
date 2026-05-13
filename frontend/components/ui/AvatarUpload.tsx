@@ -8,6 +8,7 @@ interface AvatarUploadProps {
   value?: string | null;
   initials?: string;
   onChange: (dataUrl: string | null) => void;
+  onFile?: (file: File) => void;
   size?: "sm" | "md" | "lg";
 }
 
@@ -49,6 +50,7 @@ export default function AvatarUpload({
   value,
   initials = "?",
   onChange,
+  onFile,
   size = "md",
 }: AvatarUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -62,7 +64,8 @@ export default function AvatarUpload({
     }
     try {
       const dataUrl = await compressImage(file);
-      onChange(dataUrl);
+      onChange(dataUrl);   // instant preview
+      onFile?.(file);      // trigger upload in parent
     } catch {
       toast.error("Could not process image — try a different file");
     }

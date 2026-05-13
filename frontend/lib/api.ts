@@ -153,6 +153,12 @@ export const staffApi = {
   },
 };
 
+// ── School ──────────────────────────────────────────────────────────────
+export const schoolApi = {
+  listProgrammes: (): Promise<{ id: string; name: string }[]> =>
+    api.get("/school/programmes").then((r) => r.data),
+};
+
 // ── Academic ────────────────────────────────────────────────────────────
 export const academicApi = {
   listYears: () => api.get("/academic-years").then((r) => r.data),
@@ -166,12 +172,18 @@ export const academicApi = {
     api.get(`/academic-years/${yearId}/terms`).then((r) => r.data),
   createTerm: (yearId: string, body: unknown) =>
     api.post(`/academic-years/${yearId}/terms`, body).then((r) => r.data),
+  updateTerm: (termId: string, body: unknown) =>
+    api.patch(`/terms/${termId}`, body).then((r) => r.data),
   setCurrentTerm: (termId: string) =>
     api.post(`/terms/${termId}/set-current`).then((r) => r.data),
-  listClasses: (params?: Record<string, string | boolean>) =>
+  listClasses: (params?: Record<string, string | boolean | null>) =>
     api.get("/classes", { params }).then((r) => r.data),
+  getClass: (classId: string) =>
+    api.get(`/classes/${classId}`).then((r) => r.data),
   createClass: (body: unknown) =>
     api.post("/classes", body).then((r) => r.data),
+  updateClass: (classId: string, body: unknown) =>
+    api.patch(`/classes/${classId}`, body).then((r) => r.data),
   getClassStudents: (classId: string, yearId?: string) =>
     api
       .get(`/classes/${classId}/students`, {
@@ -182,9 +194,22 @@ export const academicApi = {
     api.get("/subjects", { params }).then((r) => r.data),
   createSubject: (body: unknown) =>
     api.post("/subjects", body).then((r) => r.data),
+  updateSubject: (id: string, body: unknown) =>
+    api.patch(`/subjects/${id}`, body).then((r) => r.data),
   deleteSubject: (id: string) => api.delete(`/subjects/${id}`),
+  // Enrollment
   enroll: (body: unknown) =>
     api.post("/enrollments", body).then((r) => r.data),
+  promoteStudent: (enrollmentId: string, body: unknown) =>
+    api.patch(`/enrollments/${enrollmentId}/promote`, body).then((r) => r.data),
+  repeatStudent: (enrollmentId: string, body: unknown) =>
+    api.patch(`/enrollments/${enrollmentId}/repeat`, body).then((r) => r.data),
+  transferStudent: (enrollmentId: string, body: unknown) =>
+    api.patch(`/enrollments/${enrollmentId}/transfer`, body).then((r) => r.data),
+  graduateStudent: (enrollmentId: string, body: unknown) =>
+    api.patch(`/enrollments/${enrollmentId}/graduate`, body).then((r) => r.data),
+  bulkPromote: (body: unknown) =>
+    api.post("/enrollments/bulk-promote", body).then((r) => r.data),
 };
 
 // ── Attendance ─────────────────────────────────────────────────────────
