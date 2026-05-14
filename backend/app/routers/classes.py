@@ -14,6 +14,8 @@ from app.models.student import Student
 from app.models.programme import SchoolProgramme, SystemProgramme
 from app.models.attendance import AttendanceSession, AttendanceRecord
 from app.models.assessment import Assessment, AssessmentScore
+from app.models.class_subject import ClassSubject
+from app.models.staff import Staff
 from app.schemas.academic import (
     AcademicYearCreate, AcademicYearUpdate, AcademicYearResponse,
     TermCreate, TermUpdate, TermResponse,
@@ -24,6 +26,7 @@ from app.schemas.academic import (
     TransferRequest, GraduateRequest,
     BulkPromoteRequest, BulkPromoteResponse,
     ClassStudentResponse,
+    ClassSubjectCreate, ClassSubjectUpdate, ClassSubjectResponse,
 )
 
 # Convenience alias — write endpoints in this router are restricted to admins.
@@ -365,6 +368,147 @@ async def get_class_students(
 
 
 # ══════════════════════════════════════════════════════════════════════════
+# CLASS SUBJECTS (curriculum + teacher assignment per class)
+# ══════════════════════════════════════════════════════════════════════════
+
+def _to_class_subject_response(cs: ClassSubject) -> ClassSubjectResponse:
+    teacher_name = None
+    if cs.teacher:
+        teacher_name = f"{cs.teacher.first_name} {cs.teacher.last_name}"
+    return ClassSubjectResponse(
+        id=cs.id,
+        class_id=cs.class_id,
+        subject_id=cs.subject_id,
+        subject_name=cs.subject.name,
+        subject_code=cs.subject.code,
+        subject_category=cs.subject.category,
+        teacher_id=cs.teacher_id,
+        teacher_name=teacher_name,
+        order=cs.order,
+    )
+
+
+@router.get("/classes/{class_id}/subjects", response_model=List[ClassSubjectResponse])
+async def list_class_subjects(
+    class_id: UUID, user: CurrentUser, school: CurrentSchool, db: DB,
+):
+    await _get_class(class_id, school.id, db)
+    result = await db.execute(
+        select(ClassSubject)
+        .options(selectinload(ClassSubject.subject), selectinload(ClassSubject.teacher))
+        .where(ClassSubject.class_id == class_id)
+        .order_by(ClassSubject.order, ClassSubject.created_at)
+    )
+    return [_to_class_subject_response(cs) for cs in result.scalars().all()]
+
+
+@router.post("/classes/{class_id}/subjects", response_model=ClassSubjectResponse, status_code=201)
+async def add_class_subject(
+    class_id: UUID, body: ClassSubjectCreate,
+    _: WriteRole, school: CurrentSchool, db: DB,
+):
+    await _get_class(class_id, school.id, db)
+
+    subj_res = await db.execute(
+        select(Subject).where(
+            Subject.id == body.subject_id,
+            (Subject.school_id == school.id) | (Subject.school_id.is_(None)),
+        )
+    )
+    if not subj_res.scalar_one_or_none():
+        raise HTTPException(404, "Subject not found")
+
+    if body.teacher_id:
+        staff_res = await db.execute(
+            select(Staff).where(
+                Staff.id == body.teacher_id, Staff.school_id == school.id,
+            )
+        )
+        if not staff_res.scalar_one_or_none():
+            raise HTTPException(404, "Teacher not found")
+
+    dup = await db.execute(
+        select(ClassSubject).where(
+            ClassSubject.class_id == class_id,
+            ClassSubject.subject_id == body.subject_id,
+        )
+    )
+    if dup.scalar_one_or_none():
+        raise HTTPException(409, "Subject already assigned to this class")
+
+    cs = ClassSubject(
+        school_id=school.id,
+        class_id=class_id,
+        subject_id=body.subject_id,
+        teacher_id=body.teacher_id,
+        order=body.order,
+    )
+    db.add(cs)
+    await db.commit()
+    result = await db.execute(
+        select(ClassSubject)
+        .options(selectinload(ClassSubject.subject), selectinload(ClassSubject.teacher))
+        .where(ClassSubject.id == cs.id)
+    )
+    return _to_class_subject_response(result.scalar_one())
+
+
+@router.patch("/classes/{class_id}/subjects/{cs_id}", response_model=ClassSubjectResponse)
+async def update_class_subject(
+    class_id: UUID, cs_id: UUID, body: ClassSubjectUpdate,
+    _: WriteRole, school: CurrentSchool, db: DB,
+):
+    result = await db.execute(
+        select(ClassSubject).where(
+            ClassSubject.id == cs_id,
+            ClassSubject.class_id == class_id,
+            ClassSubject.school_id == school.id,
+        )
+    )
+    cs = result.scalar_one_or_none()
+    if not cs:
+        raise HTTPException(404, "Class subject not found")
+
+    if body.teacher_id is not None:
+        staff_res = await db.execute(
+            select(Staff).where(
+                Staff.id == body.teacher_id, Staff.school_id == school.id,
+            )
+        )
+        if not staff_res.scalar_one_or_none():
+            raise HTTPException(404, "Teacher not found")
+
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(cs, field, value)
+
+    await db.commit()
+    result = await db.execute(
+        select(ClassSubject)
+        .options(selectinload(ClassSubject.subject), selectinload(ClassSubject.teacher))
+        .where(ClassSubject.id == cs_id)
+    )
+    return _to_class_subject_response(result.scalar_one())
+
+
+@router.delete("/classes/{class_id}/subjects/{cs_id}", status_code=204)
+async def remove_class_subject(
+    class_id: UUID, cs_id: UUID, _: WriteRole, school: CurrentSchool, db: DB,
+):
+    result = await db.execute(
+        select(ClassSubject).where(
+            ClassSubject.id == cs_id,
+            ClassSubject.class_id == class_id,
+            ClassSubject.school_id == school.id,
+        )
+    )
+    cs = result.scalar_one_or_none()
+    if not cs:
+        raise HTTPException(404, "Class subject not found")
+    await db.delete(cs)
+    await db.commit()
+
+
+# ══════════════════════════════════════════════════════════════════════════
 # SUBJECTS
 # ══════════════════════════════════════════════════════════════════════════
 
@@ -373,7 +517,12 @@ async def list_subjects(
     user: CurrentUser, school: CurrentSchool, db: DB,
     level_group: Optional[str] = Query(None),
 ):
-    query = select(Subject).where(Subject.school_id == school.id)
+    # Include both the school's own subjects AND seeded GES system subjects
+    # (school_id NULL). System subjects are read-only — update/delete still
+    # filter by school_id so admins can't edit them.
+    query = select(Subject).where(
+        (Subject.school_id == school.id) | (Subject.school_id.is_(None))
+    )
     if level_group:
         query = query.where(
             (Subject.level_group == level_group) | (Subject.level_group == "all")

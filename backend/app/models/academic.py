@@ -96,6 +96,11 @@ class Class(Base):
     school           = relationship("School", back_populates="classes")
     class_teacher    = relationship("Staff")
     enrollments      = relationship("Enrollment", back_populates="class_")
+    class_subjects   = relationship(
+        "ClassSubject", back_populates="class_",
+        cascade="all, delete-orphan",
+        order_by="ClassSubject.order",
+    )
 
     @staticmethod
     def generate_name(

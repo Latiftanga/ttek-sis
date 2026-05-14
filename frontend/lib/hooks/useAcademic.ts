@@ -43,6 +43,7 @@ export interface Class {
 
 export interface Subject {
   id: string;
+  school_id: string | null;   // null = seeded GES system subject (read-only)
   name: string;
   code: string | null;
   category: string;
@@ -382,6 +383,57 @@ export function useUnenrollStudent() {
   return useMutation({
     mutationFn: (enrollmentId: string) => academicApi.unenroll(enrollmentId),
     onSuccess: () => qc.invalidateQueries({ queryKey: [slug, "class-students"] }),
+  });
+}
+
+// ── Class subjects (curriculum + teacher assignment) ──────────────────────
+
+export interface ClassSubjectRow {
+  id: string;
+  class_id: string;
+  subject_id: string;
+  subject_name: string;
+  subject_code: string | null;
+  subject_category: string;
+  teacher_id: string | null;
+  teacher_name: string | null;
+  order: number;
+}
+
+export function useClassSubjects(classId: string | null) {
+  const slug = useSlug();
+  return useQuery<ClassSubjectRow[]>({
+    queryKey: [slug, "class-subjects", classId],
+    queryFn: () => academicApi.listClassSubjects(classId!),
+    enabled: !!slug && !!classId,
+  });
+}
+
+export function useAddClassSubject(classId: string) {
+  const qc = useQueryClient();
+  const slug = useSlug();
+  return useMutation({
+    mutationFn: (body: unknown) => academicApi.addClassSubject(classId, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [slug, "class-subjects", classId] }),
+  });
+}
+
+export function useUpdateClassSubject(classId: string) {
+  const qc = useQueryClient();
+  const slug = useSlug();
+  return useMutation({
+    mutationFn: ({ csId, body }: { csId: string; body: unknown }) =>
+      academicApi.updateClassSubject(classId, csId, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [slug, "class-subjects", classId] }),
+  });
+}
+
+export function useRemoveClassSubject(classId: string) {
+  const qc = useQueryClient();
+  const slug = useSlug();
+  return useMutation({
+    mutationFn: (csId: string) => academicApi.removeClassSubject(classId, csId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [slug, "class-subjects", classId] }),
   });
 }
 

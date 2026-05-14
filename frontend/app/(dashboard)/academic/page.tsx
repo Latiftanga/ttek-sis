@@ -784,7 +784,12 @@ function SubjectsSection({ isAdmin, schoolType }: { isAdmin: boolean; schoolType
                       }`}>
                         {s.level_group === "all" ? "All" : capitalize(s.level_group)}
                       </span>
-                      {isAdmin && (
+                      {s.school_id === null && (
+                        <span className="shrink-0 rounded-full bg-purple-50 px-2 py-0.5 text-xs text-purple-600 dark:bg-purple-950/40 dark:text-purple-300" title="GES standard subject — read-only">
+                          GES
+                        </span>
+                      )}
+                      {isAdmin && s.school_id !== null && (
                         <button
                           onClick={() => setDeleteTarget(s)}
                           className="shrink-0 rounded p-1 text-gray-300 hover:bg-red-50 hover:text-red-500 dark:text-gray-600 dark:hover:bg-red-950/40 dark:hover:text-red-400"

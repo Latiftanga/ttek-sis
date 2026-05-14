@@ -273,6 +273,31 @@ class GraduateRequest(BaseModel):
     end_date: Optional[date] = None
 
 
+class ClassSubjectCreate(BaseModel):
+    subject_id: UUID
+    teacher_id: Optional[UUID] = None
+    order: int = 0
+
+
+class ClassSubjectUpdate(BaseModel):
+    teacher_id: Optional[UUID] = None
+    order: Optional[int] = None
+
+
+class ClassSubjectResponse(BaseModel):
+    id: UUID
+    class_id: UUID
+    subject_id: UUID
+    subject_name: str
+    subject_code: Optional[str] = None
+    subject_category: str
+    teacher_id: Optional[UUID] = None
+    teacher_name: Optional[str] = None
+    order: int
+
+    model_config = {"from_attributes": True}
+
+
 class BulkPromoteRequest(BaseModel):
     from_class_id: UUID
     to_class_id: UUID

@@ -228,6 +228,15 @@ export const academicApi = {
     api.delete(`/enrollments/${enrollmentId}`),
   bulkPromote: (body: unknown) =>
     api.post("/enrollments/bulk-promote", body).then((r) => r.data),
+  // Class subjects (curriculum + teacher per class)
+  listClassSubjects: (classId: string) =>
+    api.get(`/classes/${classId}/subjects`).then((r) => r.data),
+  addClassSubject: (classId: string, body: unknown) =>
+    api.post(`/classes/${classId}/subjects`, body).then((r) => r.data),
+  updateClassSubject: (classId: string, csId: string, body: unknown) =>
+    api.patch(`/classes/${classId}/subjects/${csId}`, body).then((r) => r.data),
+  removeClassSubject: (classId: string, csId: string) =>
+    api.delete(`/classes/${classId}/subjects/${csId}`),
 };
 
 // ── Attendance ─────────────────────────────────────────────────────────

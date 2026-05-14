@@ -9,7 +9,7 @@ import { z } from "zod";
 import {
   ArrowLeft, Users, BookMarked, Pencil, MoreVertical,
   TrendingUp, TrendingDown, RotateCcw, ArrowRightFromLine, GraduationCap,
-  UserPlus, UserMinus, ExternalLink,
+  UserPlus, UserMinus, ExternalLink, Trash2,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Select from "@/components/ui/Select";
@@ -25,8 +25,10 @@ import {
   useClassDetail, useClassStudents, useAcademicYears, useClasses, useSubjects,
   usePromoteStudent, useDemoteStudent, useRepeatStudent, useTransferStudent,
   useGraduateStudent, useUnenrollStudent, useBulkPromote,
-  type AcademicYear, type Class, type ClassStudent,
+  useClassSubjects, useAddClassSubject, useUpdateClassSubject, useRemoveClassSubject,
+  type AcademicYear, type Class, type ClassStudent, type ClassSubjectRow,
 } from "@/lib/hooks/useAcademic";
+import { useStaff } from "@/lib/hooks/useStaff";
 
 // ── Action schemas ────────────────────────────────────────────────────────
 
@@ -639,77 +641,187 @@ function StudentsTab({
   );
 }
 
-// ── Subjects tab ──────────────────────────────────────────────────────────
+// ── Subjects tab — class curriculum + per-subject teacher assignment ─────
 
-function SubjectsTab({ class_ }: { class_: Class }) {
-  const { data: allSubjects = [], isLoading } = useSubjects();
+function SubjectsTab({ class_, isAdmin }: { class_: Class; isAdmin: boolean }) {
+  const { data: classSubjects = [], isLoading } = useClassSubjects(class_.id);
+  const { data: allSubjects = [] } = useSubjects();
+  const { data: staffList = [] } = useStaff({ status: "active", limit: 500 });
+  const addCs = useAddClassSubject(class_.id);
+  const updateCs = useUpdateClassSubject(class_.id);
+  const removeCs = useRemoveClassSubject(class_.id);
 
-  const subjects = allSubjects.filter(
-    (s) => s.level_group === "all" || s.level_group === class_.level_group,
+  const [addOpen, setAddOpen] = useState(false);
+  const [editingCsId, setEditingCsId] = useState<string | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<ClassSubjectRow | null>(null);
+
+  // Subjects available to add — match this class's level_group, exclude already-added.
+  const assignedIds = new Set(classSubjects.map((cs) => cs.subject_id));
+  const availableSubjects = allSubjects.filter(
+    (s) => (s.level_group === "all" || s.level_group === class_.level_group)
+        && !assignedIds.has(s.id),
   );
 
-  const byCategory = subjects.reduce<Record<string, typeof subjects>>((acc, s) => {
-    if (!acc[s.category]) acc[s.category] = [];
-    acc[s.category].push(s);
-    return acc;
-  }, {});
+  async function handleAssignTeacher(csId: string, teacherId: string | null) {
+    try {
+      await updateCs.mutateAsync({ csId, body: { teacher_id: teacherId } });
+      toast.success("Teacher updated");
+      setEditingCsId(null);
+    } catch (err) {
+      toast.error(getApiError(err));
+    }
+  }
 
-  const categoryOrder  = ["core", "elective", "vocational"];
-  const categoryLabels: Record<string, string> = { core: "Core", elective: "Elective", vocational: "Vocational" };
+  async function handleRemove() {
+    if (!removeTarget) return;
+    try {
+      await removeCs.mutateAsync(removeTarget.id);
+      toast.success(`${removeTarget.subject_name} removed`);
+      setRemoveTarget(null);
+    } catch (err) {
+      toast.error(getApiError(err));
+    }
+  }
 
   if (isLoading) return <div className="h-48 animate-pulse rounded-xl bg-gray-100 dark:bg-gray-800" />;
 
-  if (subjects.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-200 py-12 text-center dark:border-gray-700">
-        <BookMarked className="h-10 w-10 text-gray-300 dark:text-gray-600" />
-        <p className="mt-3 text-sm text-gray-400 dark:text-gray-500">
-          No subjects configured for {capitalize(class_.level_group)} level yet.
-        </p>
-        <Link href="/academic?tab=subjects" className="mt-2 text-xs text-[var(--brand)] hover:underline">
-          Manage subjects
-        </Link>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-4">
-      <p className="text-xs text-gray-500 dark:text-gray-400">
-        Showing subjects for <strong>{capitalize(class_.level_group)}</strong> level (includes &quot;all levels&quot; subjects).
-      </p>
-      {categoryOrder.map((cat) => {
-        const catSubjects = byCategory[cat] ?? [];
-        if (catSubjects.length === 0) return null;
-        return (
-          <div key={cat} className="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
-            <div className="border-b border-gray-100 px-5 py-3 dark:border-gray-800">
-              <span className="text-xs font-semibold uppercase tracking-widest text-gray-400">
-                {categoryLabels[cat]} ({catSubjects.length})
-              </span>
-            </div>
-            <div className="divide-y divide-gray-100 dark:divide-gray-800">
-              {catSubjects.map((s) => (
-                <div key={s.id} className="flex items-center gap-3 px-5 py-3">
-                  <div className="flex-1 min-w-0">
-                    <span className="text-sm font-medium text-gray-900 dark:text-white">{s.name}</span>
-                    {s.code && <span className="ml-2 font-mono text-xs text-gray-400">{s.code}</span>}
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          {classSubjects.length} subject{classSubjects.length !== 1 ? "s" : ""} in {class_.name}
+        </p>
+        {isAdmin && availableSubjects.length > 0 && (
+          <Button size="sm" onClick={() => setAddOpen(true)}>
+            <BookMarked className="h-4 w-4" />Add Subject
+          </Button>
+        )}
+      </div>
+
+      {classSubjects.length === 0 ? (
+        <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-200 py-12 text-center dark:border-gray-700">
+          <BookMarked className="h-10 w-10 text-gray-300 dark:text-gray-600" />
+          <p className="mt-3 text-sm text-gray-400 dark:text-gray-500">No subjects assigned yet.</p>
+          {isAdmin && (
+            <Button size="sm" variant="secondary" className="mt-3" onClick={() => setAddOpen(true)}>
+              Add Subject
+            </Button>
+          )}
+        </div>
+      ) : (
+        <div className="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
+          <div className="divide-y divide-gray-100 dark:divide-gray-800">
+            {classSubjects.map((cs) => (
+              <div key={cs.id} className="flex items-center gap-3 px-5 py-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-gray-900 dark:text-white">
+                      {cs.subject_name}
+                    </span>
+                    {cs.subject_code && (
+                      <span className="font-mono text-xs text-gray-400">{cs.subject_code}</span>
+                    )}
+                    <Badge variant={cs.subject_category === "core" ? "green" : "blue"}>
+                      {capitalize(cs.subject_category)}
+                    </Badge>
                   </div>
-                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${
-                    s.level_group === "all"
-                      ? "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"
-                      : s.level_group === "basic"
-                        ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400"
-                        : "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400"
-                  }`}>
-                    {s.level_group === "all" ? "All" : capitalize(s.level_group)}
-                  </span>
+                  <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {editingCsId === cs.id ? (
+                      <select
+                        autoFocus
+                        defaultValue={cs.teacher_id ?? ""}
+                        onChange={(e) => handleAssignTeacher(cs.id, e.target.value || null)}
+                        onBlur={() => setEditingCsId(null)}
+                        className="rounded border border-gray-300 bg-white px-2 py-0.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                      >
+                        <option value="">— Unassigned —</option>
+                        {staffList.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.first_name} {s.last_name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <button
+                        onClick={() => isAdmin && setEditingCsId(cs.id)}
+                        disabled={!isAdmin}
+                        className={isAdmin
+                          ? "hover:text-[var(--brand)]"
+                          : "cursor-default"}
+                      >
+                        {cs.teacher_name ?? <span className="italic text-gray-400">No teacher assigned</span>}
+                      </button>
+                    )}
+                  </div>
                 </div>
-              ))}
-            </div>
+                {isAdmin && (
+                  <button
+                    onClick={() => setRemoveTarget(cs)}
+                    className="shrink-0 rounded p-1.5 text-gray-300 hover:bg-red-50 hover:text-red-500 dark:text-gray-600 dark:hover:bg-red-950/40 dark:hover:text-red-400"
+                    aria-label={`Remove ${cs.subject_name}`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+            ))}
           </div>
-        );
-      })}
+        </div>
+      )}
+
+      {/* Add subject modal */}
+      <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Add Subject to Class" size="sm">
+        <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">
+          Pick a subject to add to {class_.name}. You can assign a teacher now or later.
+        </p>
+        {availableSubjects.length === 0 ? (
+          <p className="py-4 text-center text-sm text-gray-400">
+            All available subjects have already been added.
+          </p>
+        ) : (
+          <div className="max-h-72 space-y-1 overflow-y-auto">
+            {availableSubjects.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={async () => {
+                  try {
+                    await addCs.mutateAsync({ subject_id: s.id });
+                    toast.success(`${s.name} added`);
+                    setAddOpen(false);
+                  } catch (err) {
+                    toast.error(getApiError(err));
+                  }
+                }}
+                className="flex w-full items-center justify-between gap-2 rounded-lg border border-gray-200 px-3 py-2 text-left text-sm hover:border-[var(--brand)] hover:bg-[var(--brand)]/5 dark:border-gray-700"
+              >
+                <span className="text-gray-900 dark:text-white">{s.name}</span>
+                <span className="flex items-center gap-2 text-xs text-gray-400">
+                  {s.code && <span className="font-mono">{s.code}</span>}
+                  <Badge variant={s.category === "core" ? "green" : "blue"}>
+                    {capitalize(s.category)}
+                  </Badge>
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="mt-4 flex justify-end border-t border-gray-100 pt-3 dark:border-gray-800">
+          <Button type="button" variant="secondary" onClick={() => setAddOpen(false)}>Close</Button>
+        </div>
+      </Modal>
+
+      {/* Remove confirmation */}
+      <Modal open={!!removeTarget} onClose={() => setRemoveTarget(null)} title="Remove Subject?" size="sm">
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Remove <strong>{removeTarget?.subject_name}</strong> from {class_.name}? The subject
+          remains in the school catalogue and can be re-added.
+        </p>
+        <div className="mt-5 flex justify-end gap-3 border-t border-gray-100 pt-4 dark:border-gray-800">
+          <Button type="button" variant="secondary" onClick={() => setRemoveTarget(null)}>Cancel</Button>
+          <Button type="button" variant="danger" onClick={handleRemove}>Remove</Button>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -829,7 +941,7 @@ export default function ClassDetailPage() {
           onBulkPromote={() => setBulkOpen(true)}
         />
       )}
-      {tab === "subjects" && <SubjectsTab class_={class_} />}
+      {tab === "subjects" && <SubjectsTab class_={class_} isAdmin={isAdmin} />}
 
       {/* Edit class drawer */}
       <Drawer open={editOpen} onClose={() => setEditOpen(false)} title={`Edit ${class_.name}`} width="md">
