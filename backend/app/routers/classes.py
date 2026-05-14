@@ -3,7 +3,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, update
+from sqlalchemy import select, func, update, delete as sql_delete
 from sqlalchemy.orm import selectinload
 
 from app.dependencies import CurrentUser, CurrentSchool, DB, require_roles
@@ -597,15 +597,15 @@ async def set_student_subjects(
     ]
     valid_subject_ids = {cs.subject_id for cs in valid_class_subjects}
 
-    # Delete all existing selections, then insert the new set
-    existing_res = await db.execute(
-        select(StudentSubject).where(
+    # SQL DELETE runs immediately on execute — avoids ORM flush ordering
+    # issues that cause unique constraint violations when doing delete+insert
+    # on the same key within a single flush.
+    await db.execute(
+        sql_delete(StudentSubject).where(
             StudentSubject.enrollment_id == enrollment_id,
             StudentSubject.school_id == school.id,
         )
     )
-    for row in existing_res.scalars().all():
-        await db.delete(row)
 
     new_rows = [
         StudentSubject(
@@ -628,7 +628,6 @@ async def set_student_subjects(
         )
     )
     rows = result.scalars().all()
-    await db.commit()
     return [
         StudentSubjectResponse(
             id=r.id,
