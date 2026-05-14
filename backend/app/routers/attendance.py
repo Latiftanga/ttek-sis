@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 from app.dependencies import CurrentUser, CurrentSchool, DB
 from app.models.school_period import SchoolPeriod
 from app.models.attendance import AttendanceSession, AttendanceRecord
-from app.models.academic import AcademicYear, Class, Term
+from app.models.academic import AcademicYear, Class, Term, Subject
 from app.models.student import Student
 from app.models.enrollment import Enrollment
 from app.schemas.attendance import (
@@ -152,6 +152,12 @@ async def open_session(
     if body.session_type == "lesson" and not body.subject_id:
         raise HTTPException(400, "Lesson sessions require a subject")
 
+    # Tenant boundary — every referenced resource must belong to this school
+    await _assert_class_in_school(body.class_id, school.id, db)
+    await _assert_term_in_school(body.term_id, school.id, db)
+    if body.subject_id:
+        await _assert_subject_in_school(body.subject_id, school.id, db)
+
     # Check no duplicate session for same class/date/type/subject
     dup_query = select(AttendanceSession).where(
         AttendanceSession.school_id == school.id,
@@ -232,14 +238,19 @@ async def submit_session(
     now = datetime.now(UTC)
 
     # Submission speed check
-    opened = session.client_opened_at.replace(tzinfo=UTC)
-    client_submitted = body.client_submitted_at.replace(tzinfo=UTC)
+    opened = _ensure_utc(session.client_opened_at)
+    client_submitted = _ensure_utc(body.client_submitted_at)
     duration_seconds = (client_submitted - opened).total_seconds()
     num_students = len(body.records)
 
     if num_students > 0 and duration_seconds < (num_students * MIN_SECONDS_PER_STUDENT):
         session.is_flagged = True
         session.flag_reason = "submitted_too_fast"
+
+    # Tenant boundary — every student must belong to this school
+    await _assert_students_in_school(
+        [r.student_id for r in body.records], school.id, db
+    )
 
     # Create attendance records
     for record_input in body.records:
@@ -727,6 +738,15 @@ async def sync_batch(
             if not term_check.scalar_one_or_none():
                 raise HTTPException(400, "Term does not belong to this school")
 
+            if offline_session.session.subject_id:
+                await _assert_subject_in_school(
+                    offline_session.session.subject_id, school.id, db
+                )
+
+            await _assert_students_in_school(
+                [r.student_id for r in offline_session.records], school.id, db
+            )
+
             now = datetime.now(UTC)
             client_opened = _ensure_utc(offline_session.session.client_opened_at)
             gap_seconds = int((now - client_opened).total_seconds())
@@ -858,3 +878,56 @@ async def _get_current_term(school_id: UUID, db: AsyncSession):
     if not term:
         raise HTTPException(404, "No current term set")
     return term
+
+
+async def _assert_class_in_school(
+    class_id: UUID, school_id: UUID, db: AsyncSession
+) -> None:
+    result = await db.execute(
+        select(Class.id).where(Class.id == class_id, Class.school_id == school_id)
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(404, "Class not found")
+
+
+async def _assert_term_in_school(
+    term_id: UUID, school_id: UUID, db: AsyncSession
+) -> None:
+    result = await db.execute(
+        select(Term.id).where(Term.id == term_id, Term.school_id == school_id)
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(404, "Term not found")
+
+
+async def _assert_subject_in_school(
+    subject_id: UUID, school_id: UUID, db: AsyncSession
+) -> None:
+    # System subjects (school_id NULL) are also valid.
+    result = await db.execute(
+        select(Subject.id).where(
+            Subject.id == subject_id,
+            (Subject.school_id == school_id) | (Subject.school_id.is_(None)),
+        )
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(404, "Subject not found")
+
+
+async def _assert_students_in_school(
+    student_ids: list[UUID], school_id: UUID, db: AsyncSession
+) -> None:
+    if not student_ids:
+        return
+    unique_ids = list(set(student_ids))
+    result = await db.execute(
+        select(func.count(Student.id)).where(
+            Student.id.in_(unique_ids),
+            Student.school_id == school_id,
+        )
+    )
+    found = result.scalar() or 0
+    if found != len(unique_ids):
+        raise HTTPException(
+            400, "One or more student IDs do not belong to this school"
+        )

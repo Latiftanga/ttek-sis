@@ -511,6 +511,14 @@ async def bulk_upload_students(
                 400,
                 "academic_year_id and start_date are required when class_id is provided"
             )
+        year_check = await db.execute(
+            select(AcademicYear).where(
+                AcademicYear.id == academic_year_id,
+                AcademicYear.school_id == school.id,
+            )
+        )
+        if not year_check.scalar_one_or_none():
+            raise HTTPException(404, "Academic year not found")
 
     imported  = 0
     skipped   = 0
@@ -890,6 +898,24 @@ async def transfer_student_in(
             400,
             "class_id, academic_year_id and start_date are required"
         )
+
+    # Tenant boundary — class and year must belong to this school
+    class_check = await db.execute(
+        select(ClassModel).where(
+            ClassModel.id == class_id,
+            ClassModel.school_id == school.id,
+        )
+    )
+    if not class_check.scalar_one_or_none():
+        raise HTTPException(404, "Class not found")
+    year_check = await db.execute(
+        select(AcademicYear).where(
+            AcademicYear.id == academic_year_id,
+            AcademicYear.school_id == school.id,
+        )
+    )
+    if not year_check.scalar_one_or_none():
+        raise HTTPException(404, "Academic year not found")
 
     # Check not already enrolled this year
     existing = await db.execute(

@@ -21,7 +21,7 @@ self.addEventListener("activate", (e) => {
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== "GET") return;
-  if (!url.origin === self.location.origin) return;
+  if (url.origin !== self.location.origin) return;
   // Never cache API calls or Next.js internals
   if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/_next/")) return;
 

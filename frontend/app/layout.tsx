@@ -46,7 +46,7 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className="min-h-screen bg-gray-50 font-sans antialiased dark:bg-gray-950 dark:text-gray-100">
+      <body className="min-h-screen bg-gray-50 font-sans antialiased dark:bg-gray-950 dark:text-gray-100" suppressHydrationWarning>
         <Providers>
           {children}
           <PWARegister />

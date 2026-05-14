@@ -220,6 +220,11 @@ async def create_assessment(
     # Validate category belongs to school
     category = await _get_category(body.category_id, school.id, db)
 
+    # Tenant boundary — class/subject/term must belong to this school
+    await _assert_class_in_school(body.class_id, school.id, db)
+    await _assert_subject_in_school(body.subject_id, school.id, db)
+    await _assert_term_in_school(body.term_id, school.id, db)
+
     # Validate max_score doesn't exceed category max
     if body.max_score > category.max_score:
         raise HTTPException(
@@ -412,6 +417,11 @@ async def submit_scores(
     """
     assessment = await _get_assessment(assessment_id, school.id, db)
 
+    # Tenant boundary — every student must belong to this school
+    await _assert_students_in_school(
+        [r.student_id for r in body.records], school.id, db
+    )
+
     # Offline deduplication
     if body.client_id:
         # Check if this batch was already processed
@@ -523,6 +533,7 @@ async def edit_score(
     Full audit trail always recorded.
     """
     assessment = await _get_assessment(assessment_id, school.id, db)
+    await _assert_student_in_school(student_id, school.id, db)
 
     # Check term lock
     term_res = await db.execute(
@@ -715,6 +726,12 @@ async def compute_term_results(
     """
     if user.role not in ("headteacher", "school_admin", "superadmin"):
         raise HTTPException(403, "Only headteacher or admin can compute results")
+
+    # Tenant boundary — class/term/subject must belong to this school
+    await _assert_class_in_school(body.class_id, school.id, db)
+    await _assert_term_in_school(body.term_id, school.id, db)
+    if body.subject_id:
+        await _assert_subject_in_school(body.subject_id, school.id, db)
 
     now = datetime.now(UTC)
 
@@ -938,9 +955,14 @@ async def student_term_report(
         term_id = term.id
     else:
         term_res = await db.execute(
-            select(Term).where(Term.id == term_id)
+            select(Term).where(
+                Term.id == term_id,
+                Term.school_id == school.id,
+            )
         )
         term = term_res.scalar_one_or_none()
+        if not term:
+            raise HTTPException(404, "Term not found")
 
     # Get current enrollment
     from app.models.academic import AcademicYear
@@ -952,13 +974,16 @@ async def student_term_report(
     )
     year = year_res.scalar_one_or_none()
 
-    enrollment_res = await db.execute(
-        select(Enrollment).where(
-            Enrollment.student_id == student_id,
-            Enrollment.school_id  == school.id,
-            Enrollment.status     == "active",
-        )
+    enrollment_query = select(Enrollment).where(
+        Enrollment.student_id == student_id,
+        Enrollment.school_id  == school.id,
+        Enrollment.status     == "active",
     )
+    if year:
+        enrollment_query = enrollment_query.where(
+            Enrollment.academic_year_id == year.id
+        )
+    enrollment_res = await db.execute(enrollment_query)
     enrollment = enrollment_res.scalar_one_or_none()
     class_name = "Unknown"
     if enrollment:
@@ -1012,6 +1037,9 @@ async def lock_term_results(
     """
     if user.role not in ("headteacher", "school_admin", "superadmin"):
         raise HTTPException(403, "Only headteacher or admin can lock results")
+
+    await _assert_class_in_school(class_id, school.id, db)
+    await _assert_term_in_school(term_id, school.id, db)
 
     result = await db.execute(
         select(TermResult).where(
@@ -1075,6 +1103,71 @@ async def _get_category(
     if not c:
         raise HTTPException(404, "Assessment category not found")
     return c
+
+
+async def _assert_class_in_school(
+    class_id: UUID, school_id: UUID, db: AsyncSession
+) -> None:
+    result = await db.execute(
+        select(Class.id).where(Class.id == class_id, Class.school_id == school_id)
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(404, "Class not found")
+
+
+async def _assert_term_in_school(
+    term_id: UUID, school_id: UUID, db: AsyncSession
+) -> None:
+    result = await db.execute(
+        select(Term.id).where(Term.id == term_id, Term.school_id == school_id)
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(404, "Term not found")
+
+
+async def _assert_subject_in_school(
+    subject_id: UUID, school_id: UUID, db: AsyncSession
+) -> None:
+    # System subjects (school_id NULL) are also valid.
+    result = await db.execute(
+        select(Subject.id).where(
+            Subject.id == subject_id,
+            (Subject.school_id == school_id) | (Subject.school_id.is_(None)),
+        )
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(404, "Subject not found")
+
+
+async def _assert_student_in_school(
+    student_id: UUID, school_id: UUID, db: AsyncSession
+) -> None:
+    result = await db.execute(
+        select(Student.id).where(
+            Student.id == student_id, Student.school_id == school_id
+        )
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(404, "Student not found")
+
+
+async def _assert_students_in_school(
+    student_ids: list[UUID], school_id: UUID, db: AsyncSession
+) -> None:
+    if not student_ids:
+        return
+    unique_ids = list(set(student_ids))
+    result = await db.execute(
+        select(func.count(Student.id)).where(
+            Student.id.in_(unique_ids),
+            Student.school_id == school_id,
+        )
+    )
+    found = result.scalar() or 0
+    if found != len(unique_ids):
+        raise HTTPException(
+            400, "One or more student IDs do not belong to this school"
+        )
 
 
 async def _get_scale(
@@ -1178,8 +1271,8 @@ def _apply_grading_scale(
     if not scale or not scale.bands:
         return None, None
 
-    for band in sorted(scale.bands, key=lambda b: b.min_score, reverse=True):
+    for band in scale.bands:
         if band.min_score <= score <= band.max_score:
             return band.grade_label, band.remark
 
-    return "F9", "Fail"
+    return None, None

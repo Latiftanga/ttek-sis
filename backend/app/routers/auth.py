@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from jose import jwt
+from jose import jwt, JWTError
 from pwdlib import PasswordHash
 from pwdlib.hashers.argon2 import Argon2Hasher
 
@@ -101,7 +101,10 @@ async def login(
 
 
 @router.post("/refresh")
-async def refresh_token(body: RefreshRequest):
+async def refresh_token(
+    body: RefreshRequest,
+    db: AsyncSession = Depends(get_db),
+):
     token = body.refresh_token
     try:
         payload = jwt.decode(
@@ -109,10 +112,23 @@ async def refresh_token(body: RefreshRequest):
         )
         if payload.get("type") != "refresh":
             raise ValueError("Not a refresh token")
-    except Exception:
+    except (JWTError, ValueError):
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
-    token_data = {k: v for k, v in payload.items() if k not in ("exp", "type")}
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+
+    result = await db.execute(select(User).where(User.id == uuid.UUID(user_id)))
+    user = result.scalar_one_or_none()
+    if not user or not user.is_active:
+        raise HTTPException(status_code=401, detail="Account inactive")
+
+    token_data = {
+        "sub":       str(user.id),
+        "school_id": str(user.school_id) if user.school_id else None,
+        "role":      user.role,
+    }
     access_token = create_token(
         token_data,
         timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)

@@ -1,12 +1,19 @@
-from fastapi import APIRouter, HTTPException, Query
+from typing import Annotated
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 
-from app.dependencies import CurrentUser, CurrentSchool, DB
+from app.dependencies import CurrentUser, CurrentSchool, DB, require_roles
 from app.models.programme import SchoolProgramme, SystemProgramme
 from app.models.school_house import SchoolHouse
+from app.models.user import User
 from app.schemas.school import ProgrammeCreate, ProgrammeUpdate, HouseCreate, HouseUpdate
 
 router = APIRouter()
+
+WriteRole = Annotated[User, Depends(require_roles("school_admin", "headteacher"))]
+DeleteRole = Annotated[User, Depends(require_roles("school_admin"))]
 
 
 # ── Programmes ────────────────────────────────────────────────────────────────
@@ -46,7 +53,7 @@ async def list_school_programmes(
 
 
 @router.post("/school/programmes", status_code=201)
-async def create_programme(body: ProgrammeCreate, user: CurrentUser, school: CurrentSchool, db: DB):
+async def create_programme(body: ProgrammeCreate, _: WriteRole, school: CurrentSchool, db: DB):
     prog = SchoolProgramme(
         school_id=school.id,
         name=body.name,
@@ -62,8 +69,8 @@ async def create_programme(body: ProgrammeCreate, user: CurrentUser, school: Cur
 
 @router.patch("/school/programmes/{programme_id}")
 async def update_programme(
-    programme_id: str, body: ProgrammeUpdate,
-    user: CurrentUser, school: CurrentSchool, db: DB,
+    programme_id: UUID, body: ProgrammeUpdate,
+    _: WriteRole, school: CurrentSchool, db: DB,
 ):
     result = await db.execute(
         select(SchoolProgramme).where(
@@ -89,8 +96,8 @@ async def update_programme(
 
 @router.delete("/school/programmes/{programme_id}", status_code=204)
 async def delete_programme(
-    programme_id: str,
-    user: CurrentUser, school: CurrentSchool, db: DB,
+    programme_id: UUID,
+    _: DeleteRole, school: CurrentSchool, db: DB,
 ):
     result = await db.execute(
         select(SchoolProgramme).where(
@@ -122,7 +129,7 @@ async def list_school_houses(user: CurrentUser, school: CurrentSchool, db: DB):
 
 
 @router.post("/school/houses", status_code=201)
-async def create_house(body: HouseCreate, user: CurrentUser, school: CurrentSchool, db: DB):
+async def create_house(body: HouseCreate, _: WriteRole, school: CurrentSchool, db: DB):
     house = SchoolHouse(
         school_id=school.id,
         name=body.name,
@@ -137,8 +144,8 @@ async def create_house(body: HouseCreate, user: CurrentUser, school: CurrentScho
 
 @router.patch("/school/houses/{house_id}")
 async def update_house(
-    house_id: str, body: HouseUpdate,
-    user: CurrentUser, school: CurrentSchool, db: DB,
+    house_id: UUID, body: HouseUpdate,
+    _: WriteRole, school: CurrentSchool, db: DB,
 ):
     result = await db.execute(
         select(SchoolHouse).where(
@@ -162,8 +169,8 @@ async def update_house(
 
 @router.delete("/school/houses/{house_id}", status_code=204)
 async def delete_house(
-    house_id: str,
-    user: CurrentUser, school: CurrentSchool, db: DB,
+    house_id: UUID,
+    _: DeleteRole, school: CurrentSchool, db: DB,
 ):
     result = await db.execute(
         select(SchoolHouse).where(

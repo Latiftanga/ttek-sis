@@ -1,9 +1,15 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
+from pwdlib import PasswordHash
+from pwdlib.hashers.argon2 import Argon2Hasher
+
 from app.models.assessment import GradingScale, GradingBand
 from app.models.programme import SystemProgramme
 from app.models.academic import Subject
 from app.models.ges_rank import GESRank
+from app.models.school import School
+from app.models.user import User
+from app.models.staff import Staff
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -283,6 +289,57 @@ async def seed_ges_ranks(db: AsyncSession) -> None:
                 existing.category = category
         else:
             db.add(GESRank(name=name, category=category, order=order))
+    await db.commit()
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# DEMO SCHOOL (development convenience)
+# ══════════════════════════════════════════════════════════════════════════
+
+DEMO_SCHOOL_NAME      = "Demo Basic & SHS School"
+DEMO_SCHOOL_SLUG      = "demo-school"
+DEMO_ADMIN_EMAIL      = "admin@demo-school.com"
+DEMO_ADMIN_PASSWORD   = "changeme123"
+
+
+async def seed_demo_school(db: AsyncSession) -> None:
+    """
+    Idempotent — only runs when zero schools exist.
+    Creates a demo school + school_admin user so you can log in immediately.
+    """
+    school_count = await db.execute(select(func.count(School.id)))
+    if (school_count.scalar() or 0) > 0:
+        return
+
+    pwd = PasswordHash((Argon2Hasher(),))
+
+    school = School(
+        name=DEMO_SCHOOL_NAME,
+        slug=DEMO_SCHOOL_SLUG,
+        school_type="combined",
+        region="Greater Accra",
+        district="Accra Metro",
+        subscription="trial",
+    )
+    db.add(school)
+    await db.flush()
+
+    staff = Staff(
+        school_id=school.id,
+        first_name="Demo",
+        last_name="Admin",
+        status="active",
+    )
+    db.add(staff)
+    await db.flush()
+
+    db.add(User(
+        school_id=school.id,
+        email=DEMO_ADMIN_EMAIL,
+        password_hash=pwd.hash(DEMO_ADMIN_PASSWORD),
+        role="school_admin",
+        staff_id=staff.id,
+    ))
     await db.commit()
 
 

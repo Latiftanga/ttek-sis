@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Annotated, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -6,7 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from app.dependencies import CurrentUser, CurrentSchool, DB
+from app.dependencies import CurrentUser, CurrentSchool, DB, require_roles
+from app.models.user import User
+
+# Convenience alias — write endpoints in this router are restricted to admins.
+WriteRole = Annotated[User, Depends(require_roles("school_admin", "headteacher"))]
 from app.models.academic import AcademicYear, Term, Class, Subject
 from app.models.enrollment import Enrollment
 from app.models.student import Student
@@ -43,7 +47,7 @@ async def list_academic_years(user: CurrentUser, school: CurrentSchool, db: DB):
 @router.post("/academic-years", response_model=AcademicYearResponse, status_code=201)
 async def create_academic_year(
     body: AcademicYearCreate,
-    user: CurrentUser,
+    _: WriteRole,
     school: CurrentSchool,
     db: DB,
 ):
@@ -75,7 +79,7 @@ async def create_academic_year(
 @router.patch("/academic-years/{year_id}", response_model=AcademicYearResponse)
 async def update_academic_year(
     year_id: UUID, body: AcademicYearUpdate,
-    user: CurrentUser, school: CurrentSchool, db: DB,
+    _: WriteRole, school: CurrentSchool, db: DB,
 ):
     year = await _get_year(year_id, school.id, db)
     if body.is_current is True:
@@ -89,7 +93,7 @@ async def update_academic_year(
 
 @router.post("/academic-years/{year_id}/set-current", response_model=AcademicYearResponse)
 async def set_current_year(
-    year_id: UUID, user: CurrentUser, school: CurrentSchool, db: DB,
+    year_id: UUID, _: WriteRole, school: CurrentSchool, db: DB,
 ):
     year = await _get_year(year_id, school.id, db)
     await _unset_current_year(school.id, db)
@@ -119,7 +123,7 @@ async def list_terms(
 @router.post("/academic-years/{year_id}/terms", response_model=TermResponse, status_code=201)
 async def create_term(
     year_id: UUID, body: TermCreate,
-    user: CurrentUser, school: CurrentSchool, db: DB,
+    _: WriteRole, school: CurrentSchool, db: DB,
 ):
     year = await _get_year(year_id, school.id, db)
 
@@ -159,7 +163,7 @@ async def create_term(
 @router.patch("/terms/{term_id}", response_model=TermResponse)
 async def update_term(
     term_id: UUID, body: TermUpdate,
-    user: CurrentUser, school: CurrentSchool, db: DB,
+    _: WriteRole, school: CurrentSchool, db: DB,
 ):
     term = await _get_term(term_id, school.id, db)
     if body.is_current is True:
@@ -173,7 +177,7 @@ async def update_term(
 
 @router.post("/terms/{term_id}/set-current", response_model=TermResponse)
 async def set_current_term(
-    term_id: UUID, user: CurrentUser, school: CurrentSchool, db: DB,
+    term_id: UUID, _: WriteRole, school: CurrentSchool, db: DB,
 ):
     term = await _get_term(term_id, school.id, db)
     await _unset_current_term(school.id, db)
@@ -239,7 +243,7 @@ async def get_class(
 
 @router.post("/classes", response_model=ClassResponse, status_code=201)
 async def create_class(
-    body: ClassCreate, user: CurrentUser, school: CurrentSchool, db: DB,
+    body: ClassCreate, _: WriteRole, school: CurrentSchool, db: DB,
 ):
     if body.level_group not in school.available_level_groups:
         raise HTTPException(
@@ -301,7 +305,7 @@ async def create_class(
 @router.patch("/classes/{class_id}", response_model=ClassResponse)
 async def update_class(
     class_id: UUID, body: ClassUpdate,
-    user: CurrentUser, school: CurrentSchool, db: DB,
+    _: WriteRole, school: CurrentSchool, db: DB,
 ):
     class_ = await _get_class(class_id, school.id, db)
     for field, value in body.model_dump(exclude_unset=True).items():
@@ -374,7 +378,7 @@ async def list_subjects(
 
 @router.post("/subjects", response_model=SubjectResponse, status_code=201)
 async def create_subject(
-    body: SubjectCreate, user: CurrentUser, school: CurrentSchool, db: DB,
+    body: SubjectCreate, _: WriteRole, school: CurrentSchool, db: DB,
 ):
     exists = await db.execute(
         select(Subject).where(
@@ -401,7 +405,7 @@ async def create_subject(
 @router.patch("/subjects/{subject_id}", response_model=SubjectResponse)
 async def update_subject(
     subject_id: UUID, body: SubjectUpdate,
-    user: CurrentUser, school: CurrentSchool, db: DB,
+    _: WriteRole, school: CurrentSchool, db: DB,
 ):
     result = await db.execute(
         select(Subject).where(
@@ -420,7 +424,9 @@ async def update_subject(
 
 @router.delete("/subjects/{subject_id}", status_code=204)
 async def delete_subject(
-    subject_id: UUID, user: CurrentUser, school: CurrentSchool, db: DB,
+    subject_id: UUID,
+    _: Annotated[User, Depends(require_roles("school_admin"))],
+    school: CurrentSchool, db: DB,
 ):
     result = await db.execute(
         select(Subject).where(
@@ -440,7 +446,7 @@ async def delete_subject(
 
 @router.post("/enrollments", response_model=EnrollmentResponse, status_code=201)
 async def enroll_student(
-    body: EnrollmentCreate, user: CurrentUser, school: CurrentSchool, db: DB,
+    body: EnrollmentCreate, _: WriteRole, school: CurrentSchool, db: DB,
 ):
     await _get_student(body.student_id, school.id, db)
     class_ = await _get_class(body.class_id, school.id, db)
@@ -478,7 +484,7 @@ async def enroll_student(
 @router.patch("/enrollments/{enrollment_id}/promote", response_model=EnrollmentResponse)
 async def promote_student(
     enrollment_id: UUID, body: PromoteRequest,
-    user: CurrentUser, school: CurrentSchool, db: DB,
+    _: WriteRole, school: CurrentSchool, db: DB,
 ):
     enrollment = await _get_enrollment(enrollment_id, school.id, db)
     if enrollment.status != "active":
@@ -521,7 +527,7 @@ async def promote_student(
 @router.patch("/enrollments/{enrollment_id}/repeat", response_model=EnrollmentResponse)
 async def repeat_student(
     enrollment_id: UUID, body: RepeatRequest,
-    user: CurrentUser, school: CurrentSchool, db: DB,
+    _: WriteRole, school: CurrentSchool, db: DB,
 ):
     enrollment = await _get_enrollment(enrollment_id, school.id, db)
     if enrollment.status != "active":
@@ -550,7 +556,7 @@ async def repeat_student(
 @router.patch("/enrollments/{enrollment_id}/transfer", status_code=200)
 async def transfer_student(
     enrollment_id: UUID, body: TransferRequest,
-    user: CurrentUser, school: CurrentSchool, db: DB,
+    _: WriteRole, school: CurrentSchool, db: DB,
 ):
     enrollment = await _get_enrollment(enrollment_id, school.id, db)
     if enrollment.status != "active":
@@ -569,7 +575,7 @@ async def transfer_student(
 @router.patch("/enrollments/{enrollment_id}/graduate", status_code=200)
 async def graduate_student(
     enrollment_id: UUID, body: GraduateRequest,
-    user: CurrentUser, school: CurrentSchool, db: DB,
+    _: WriteRole, school: CurrentSchool, db: DB,
 ):
     enrollment = await _get_enrollment(enrollment_id, school.id, db)
     if enrollment.status != "active":
@@ -599,7 +605,7 @@ async def graduate_student(
 
 @router.post("/enrollments/bulk-promote", response_model=BulkPromoteResponse)
 async def bulk_promote(
-    body: BulkPromoteRequest, user: CurrentUser, school: CurrentSchool, db: DB,
+    body: BulkPromoteRequest, _: WriteRole, school: CurrentSchool, db: DB,
 ):
     await _get_class(body.from_class_id, school.id, db)
     await _get_class(body.to_class_id, school.id, db)
