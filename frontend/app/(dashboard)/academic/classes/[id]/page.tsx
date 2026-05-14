@@ -790,14 +790,18 @@ function ElectivesDrawer({
   onClose: () => void;
 }) {
   const { data: classSubjects = [] } = useClassSubjects(classId);
-  const { data: current = [], isLoading } = useStudentSubjects(enrollmentId);
+  const { data: current, isLoading } = useStudentSubjects(enrollmentId);
   const setSubjects = useSetStudentSubjects(enrollmentId);
 
   const electives = classSubjects.filter((cs) => cs.subject_category === "elective");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const hasInit = useRef(false);
 
   useEffect(() => {
-    setSelected(new Set(current.map((r) => r.subject_id)));
+    if (current && !hasInit.current) {
+      setSelected(new Set(current.map((r) => r.subject_id)));
+      hasInit.current = true;
+    }
   }, [current]);
 
   function toggle(subjectId: string) {
