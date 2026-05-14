@@ -486,13 +486,15 @@ async def class_today(
     if not class_:
         raise HTTPException(404, "Class not found")
 
-    # Get current year enrollments count
+    # Count students who have started their enrollment by today — excludes
+    # future mid-year joiners from inflating the attendance denominator.
     current_year = await _get_current_year(school.id, db)
     enrolled_result = await db.execute(
         select(func.count(Enrollment.id)).where(
             Enrollment.class_id == class_id,
             Enrollment.academic_year_id == current_year.id,
             Enrollment.status == "active",
+            Enrollment.start_date <= today,
         )
     )
     total_students = enrolled_result.scalar() or 0

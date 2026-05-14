@@ -341,6 +341,7 @@ async def get_gradebook(
     Students without scores show score=None — teacher fills these in.
     """
     assessment = await _get_assessment(assessment_id, school.id, db)
+    term = await _get_term(assessment.term_id, school.id, db)
 
     # Get current year
     from app.models.academic import AcademicYear
@@ -354,7 +355,10 @@ async def get_gradebook(
     if not year:
         raise HTTPException(404, "No current academic year set")
 
-    # Get enrolled students for this class
+    # Get enrolled students for this class who were present during this term.
+    # Filtering by start_date <= term.end_date excludes students who joined
+    # after the term ended (e.g. a mid-year joiner in Term 2 won't appear
+    # in the Term 1 gradebook).
     enrollments_res = await db.execute(
         select(Enrollment)
         .options(selectinload(Enrollment.student))
@@ -363,6 +367,7 @@ async def get_gradebook(
             Enrollment.class_id == assessment.class_id,
             Enrollment.academic_year_id == year.id,
             Enrollment.status == "active",
+            Enrollment.start_date <= term.end_date,
         )
         .order_by(Enrollment.student_id)
     )
@@ -729,7 +734,7 @@ async def compute_term_results(
 
     # Tenant boundary — class/term/subject must belong to this school
     await _assert_class_in_school(body.class_id, school.id, db)
-    await _assert_term_in_school(body.term_id, school.id, db)
+    term = await _get_term(body.term_id, school.id, db)
     if body.subject_id:
         await _assert_subject_in_school(body.subject_id, school.id, db)
 
@@ -770,6 +775,7 @@ async def compute_term_results(
             Enrollment.class_id  == body.class_id,
             Enrollment.academic_year_id == year.id,
             Enrollment.status    == "active",
+            Enrollment.start_date <= term.end_date,
         )
     )
     student_ids = [e.student_id for e in enrollments_res.scalars().all()]
@@ -1123,6 +1129,16 @@ async def _assert_term_in_school(
     )
     if not result.scalar_one_or_none():
         raise HTTPException(404, "Term not found")
+
+
+async def _get_term(term_id: UUID, school_id: UUID, db: AsyncSession) -> Term:
+    result = await db.execute(
+        select(Term).where(Term.id == term_id, Term.school_id == school_id)
+    )
+    t = result.scalar_one_or_none()
+    if not t:
+        raise HTTPException(404, "Term not found")
+    return t
 
 
 async def _assert_subject_in_school(
