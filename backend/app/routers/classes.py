@@ -3,29 +3,32 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func, update
 from sqlalchemy.orm import selectinload
 
 from app.dependencies import CurrentUser, CurrentSchool, DB, require_roles
 from app.models.user import User
-
-# Convenience alias — write endpoints in this router are restricted to admins.
-WriteRole = Annotated[User, Depends(require_roles("school_admin", "headteacher"))]
 from app.models.academic import AcademicYear, Term, Class, Subject
 from app.models.enrollment import Enrollment
 from app.models.student import Student
 from app.models.programme import SchoolProgramme, SystemProgramme
+from app.models.attendance import AttendanceSession, AttendanceRecord
+from app.models.assessment import Assessment, AssessmentScore
 from app.schemas.academic import (
     AcademicYearCreate, AcademicYearUpdate, AcademicYearResponse,
     TermCreate, TermUpdate, TermResponse,
     ClassCreate, ClassUpdate, ClassResponse,
     SubjectCreate, SubjectUpdate, SubjectResponse,
     EnrollmentCreate, EnrollmentResponse,
-    PromoteRequest, RepeatRequest,
+    PromoteRequest, DemoteRequest, RepeatRequest,
     TransferRequest, GraduateRequest,
     BulkPromoteRequest, BulkPromoteResponse,
     ClassStudentResponse,
 )
+
+# Convenience alias — write endpoints in this router are restricted to admins.
+WriteRole = Annotated[User, Depends(require_roles("school_admin", "headteacher"))]
+DeleteRole = Annotated[User, Depends(require_roles("school_admin"))]
 
 router = APIRouter()
 
@@ -676,6 +679,122 @@ async def bulk_promote(
 
     await db.commit()
     return BulkPromoteResponse(promoted=promoted, skipped=skipped, errors=errors)
+
+
+@router.patch("/enrollments/{enrollment_id}/demote", response_model=EnrollmentResponse)
+async def demote_student(
+    enrollment_id: UUID, body: DemoteRequest,
+    _: WriteRole, school: CurrentSchool, db: DB,
+):
+    """
+    Demote a student to a lower class (rare — used when a student is moved
+    down a level after the year started). Mirrors promote_student.
+    """
+    enrollment = await _get_enrollment(enrollment_id, school.id, db)
+    if enrollment.status != "active":
+        raise HTTPException(400, f"Cannot demote — status is '{enrollment.status}'")
+
+    await _get_class(body.to_class_id, school.id, db)
+    await _get_year(body.academic_year_id, school.id, db)
+
+    # Exclude this enrollment itself — it'll be marked demoted below.
+    # Same-year demotion (most common case) must not trip the conflict check.
+    exists = await db.execute(
+        select(Enrollment).where(
+            Enrollment.school_id == school.id,
+            Enrollment.student_id == enrollment.student_id,
+            Enrollment.academic_year_id == body.academic_year_id,
+            Enrollment.status == "active",
+            Enrollment.id != enrollment.id,
+        )
+    )
+    if exists.scalar_one_or_none():
+        raise HTTPException(409, "Student already has an active enrollment for this year")
+
+    enrollment.status = "demoted"
+    enrollment.end_date = body.start_date
+
+    new_enrollment = Enrollment(
+        school_id=school.id,
+        student_id=enrollment.student_id,
+        class_id=body.to_class_id,
+        academic_year_id=body.academic_year_id,
+        start_date=body.start_date,
+        notes=body.notes,
+        status="active",
+    )
+    db.add(new_enrollment)
+    await db.flush()
+    enrollment.promoted_to_id = new_enrollment.id   # link chain (re-used for demotion too)
+    await db.commit()
+    await db.refresh(new_enrollment)
+    return new_enrollment
+
+
+@router.delete("/enrollments/{enrollment_id}", status_code=204)
+async def unenroll_student(
+    enrollment_id: UUID, _: DeleteRole, school: CurrentSchool, db: DB,
+):
+    """
+    Hard-delete an enrollment — for fixing a wrong placement.
+    Only allowed when:
+      - status == 'active'
+      - no attendance records exist for this student in this class
+      - no assessment scores exist for this student in this class
+
+    For real exits (transfer, graduation, withdrawal), use the dedicated
+    PATCH endpoints which preserve history.
+    """
+    enrollment = await _get_enrollment(enrollment_id, school.id, db)
+
+    if enrollment.status != "active":
+        raise HTTPException(
+            400,
+            f"Cannot delete a '{enrollment.status}' enrollment. "
+            "Only active enrollments can be unenrolled.",
+        )
+
+    attendance_count = await db.execute(
+        select(func.count(AttendanceRecord.id))
+        .join(AttendanceSession,
+              AttendanceRecord.session_id == AttendanceSession.id)
+        .where(
+            AttendanceSession.class_id == enrollment.class_id,
+            AttendanceRecord.student_id == enrollment.student_id,
+        )
+    )
+    if (attendance_count.scalar() or 0) > 0:
+        raise HTTPException(
+            400,
+            "Cannot unenroll — attendance records exist for this student in this class. "
+            "Use Transfer or Withdraw instead.",
+        )
+
+    score_count = await db.execute(
+        select(func.count(AssessmentScore.id))
+        .join(Assessment, AssessmentScore.assessment_id == Assessment.id)
+        .where(
+            Assessment.class_id == enrollment.class_id,
+            AssessmentScore.student_id == enrollment.student_id,
+        )
+    )
+    if (score_count.scalar() or 0) > 0:
+        raise HTTPException(
+            400,
+            "Cannot unenroll — assessment scores exist for this student in this class. "
+            "Use Transfer or Withdraw instead.",
+        )
+
+    # If a prior enrollment was promoted/demoted into this one, null out
+    # the chain link so the parent row keeps its history but doesn't FK-block.
+    await db.execute(
+        update(Enrollment)
+        .where(Enrollment.promoted_to_id == enrollment.id)
+        .values(promoted_to_id=None)
+    )
+
+    await db.delete(enrollment)
+    await db.commit()
 
 
 # ══════════════════════════════════════════════════════════════════════════

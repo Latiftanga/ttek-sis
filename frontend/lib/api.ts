@@ -222,6 +222,10 @@ export const academicApi = {
     api.patch(`/enrollments/${enrollmentId}/transfer`, body).then((r) => r.data),
   graduateStudent: (enrollmentId: string, body: unknown) =>
     api.patch(`/enrollments/${enrollmentId}/graduate`, body).then((r) => r.data),
+  demoteStudent: (enrollmentId: string, body: unknown) =>
+    api.patch(`/enrollments/${enrollmentId}/demote`, body).then((r) => r.data),
+  unenroll: (enrollmentId: string) =>
+    api.delete(`/enrollments/${enrollmentId}`),
   bulkPromote: (body: unknown) =>
     api.post("/enrollments/bulk-promote", body).then((r) => r.data),
 };

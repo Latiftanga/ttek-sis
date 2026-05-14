@@ -250,6 +250,13 @@ class PromoteRequest(BaseModel):
     notes: Optional[str] = None
 
 
+class DemoteRequest(BaseModel):
+    to_class_id: UUID
+    academic_year_id: UUID
+    start_date: date
+    notes: Optional[str] = None
+
+
 class RepeatRequest(BaseModel):
     academic_year_id: UUID
     start_date: date

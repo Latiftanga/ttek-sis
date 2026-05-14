@@ -8,8 +8,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
   ArrowLeft, Users, BookMarked, Pencil, MoreVertical,
-  TrendingUp, RotateCcw, ArrowRightFromLine, GraduationCap,
-  UserPlus, ExternalLink,
+  TrendingUp, TrendingDown, RotateCcw, ArrowRightFromLine, GraduationCap,
+  UserPlus, UserMinus, ExternalLink,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Select from "@/components/ui/Select";
@@ -23,8 +23,8 @@ import { useAuthStore } from "@/lib/store";
 import { capitalize, getApiError } from "@/lib/utils";
 import {
   useClassDetail, useClassStudents, useAcademicYears, useClasses, useSubjects,
-  usePromoteStudent, useRepeatStudent, useTransferStudent, useGraduateStudent,
-  useBulkPromote,
+  usePromoteStudent, useDemoteStudent, useRepeatStudent, useTransferStudent,
+  useGraduateStudent, useUnenrollStudent, useBulkPromote,
   type AcademicYear, type Class, type ClassStudent,
 } from "@/lib/hooks/useAcademic";
 
@@ -255,6 +255,111 @@ function GraduateModal({ student, onClose }: { student: ClassStudent; onClose: (
   );
 }
 
+// ── Demote modal ──────────────────────────────────────────────────────────
+
+function DemoteModal({
+  student, years, currentClassId, onClose,
+}: {
+  student: ClassStudent;
+  years: AcademicYear[];
+  currentClassId: string;
+  onClose: () => void;
+}) {
+  const { data: classes = [] } = useClasses(true);
+  const demote = useDemoteStudent();
+  const currentYear = years.find((y) => y.is_current) ?? years[0];
+
+  const { register, handleSubmit, formState: { errors, isSubmitting } } =
+    useForm<z.infer<typeof promoteSchema>>({
+      resolver: zodResolver(promoteSchema),
+      defaultValues: {
+        to_class_id:      "",
+        academic_year_id: currentYear?.id ?? "",
+        start_date:       "",
+        notes:            "",
+      },
+    });
+
+  const targetClasses = classes.filter((c) => c.id !== currentClassId);
+
+  async function onSubmit(values: z.infer<typeof promoteSchema>) {
+    try {
+      await demote.mutateAsync({ enrollmentId: student.enrollment_id, body: values });
+      toast.success(`${student.first_name} ${student.last_name} demoted`);
+      onClose();
+    } catch (err) {
+      toast.error(getApiError(err));
+    }
+  }
+
+  return (
+    <Modal open onClose={onClose} title="Demote Student" size="sm">
+      <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
+        Move <strong className="text-gray-900 dark:text-white">{student.first_name} {student.last_name}</strong> down to a lower class.
+      </p>
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
+        <Select id="dem_class" label="Target Class *" error={errors.to_class_id?.message} {...register("to_class_id")}>
+          <option value="">Select class</option>
+          {targetClasses.map((c) => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
+        </Select>
+        <Select id="dem_year" label="Academic Year *" error={errors.academic_year_id?.message} {...register("academic_year_id")}>
+          <option value="">Select year</option>
+          {years.map((y) => (
+            <option key={y.id} value={y.id}>{y.name}{y.is_current ? " (current)" : ""}</option>
+          ))}
+        </Select>
+        <Input id="dem_start" label="Start Date *" type="date" error={errors.start_date?.message} {...register("start_date")} />
+        <Input id="dem_notes" label="Reason / notes (optional)" {...register("notes")} />
+        <div className="flex justify-end gap-3 border-t border-gray-100 pt-4 dark:border-gray-800">
+          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button type="submit" loading={isSubmitting}>Demote</Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+// ── Unenroll modal ────────────────────────────────────────────────────────
+
+function UnenrollModal({ student, onClose }: { student: ClassStudent; onClose: () => void }) {
+  const unenroll = useUnenrollStudent();
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleConfirm() {
+    setSubmitting(true);
+    try {
+      await unenroll.mutateAsync(student.enrollment_id);
+      toast.success(`${student.first_name} ${student.last_name} unenrolled`);
+      onClose();
+    } catch (err) {
+      toast.error(getApiError(err));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Modal open onClose={onClose} title="Unenroll Student?" size="sm">
+      <p className="text-sm text-gray-500 dark:text-gray-400">
+        Hard-delete the enrollment for{" "}
+        <strong className="text-gray-900 dark:text-white">{student.first_name} {student.last_name}</strong>.
+        Use this only for placement mistakes — for proper exits use Transfer or Graduate.
+      </p>
+      <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+        Will fail if the student already has attendance or scores in this class.
+      </p>
+      <div className="mt-5 flex justify-end gap-3 border-t border-gray-100 pt-4 dark:border-gray-800">
+        <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
+        <Button type="button" variant="danger" loading={submitting} onClick={handleConfirm}>
+          Unenroll
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
 // ── Bulk promote modal ────────────────────────────────────────────────────
 
 function BulkPromoteModal({
@@ -328,7 +433,7 @@ function BulkPromoteModal({
 
 // ── Students tab ──────────────────────────────────────────────────────────
 
-type ActionType = "promote" | "repeat" | "transfer" | "graduate";
+type ActionType = "promote" | "demote" | "repeat" | "transfer" | "graduate" | "unenroll";
 
 function StudentsTab({
   class_,
@@ -493,6 +598,12 @@ function StudentsTab({
                   </button>
                 )}
                 <button
+                  onClick={() => { onAction(s, "demote"); setMenuOpen(null); }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"
+                >
+                  <TrendingDown className="h-4 w-4 text-orange-500" />Demote
+                </button>
+                <button
                   onClick={() => { onAction(s, "repeat"); setMenuOpen(null); }}
                   className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"
                 >
@@ -512,6 +623,13 @@ function StudentsTab({
                     <GraduationCap className="h-4 w-4 text-purple-500" />Graduate
                   </button>
                 )}
+                <div className="my-1 border-t border-gray-100 dark:border-gray-800" />
+                <button
+                  onClick={() => { onAction(s, "unenroll"); setMenuOpen(null); }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
+                >
+                  <UserMinus className="h-4 w-4" />Unenroll
+                </button>
               </>
             );
           })()}
@@ -738,6 +856,17 @@ export default function ClassDetailPage() {
       )}
       {action?.action === "graduate" && (
         <GraduateModal student={action.student} onClose={() => setAction(null)} />
+      )}
+      {action?.action === "demote" && (
+        <DemoteModal
+          student={action.student}
+          years={years}
+          currentClassId={classId}
+          onClose={() => setAction(null)}
+        />
+      )}
+      {action?.action === "unenroll" && (
+        <UnenrollModal student={action.student} onClose={() => setAction(null)} />
       )}
 
       {/* Bulk promote modal */}

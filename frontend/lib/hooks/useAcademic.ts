@@ -366,6 +366,25 @@ export function useBulkPromote() {
   });
 }
 
+export function useDemoteStudent() {
+  const qc = useQueryClient();
+  const slug = useSlug();
+  return useMutation({
+    mutationFn: ({ enrollmentId, body }: { enrollmentId: string; body: unknown }) =>
+      academicApi.demoteStudent(enrollmentId, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [slug, "class-students"] }),
+  });
+}
+
+export function useUnenrollStudent() {
+  const qc = useQueryClient();
+  const slug = useSlug();
+  return useMutation({
+    mutationFn: (enrollmentId: string) => academicApi.unenroll(enrollmentId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [slug, "class-students"] }),
+  });
+}
+
 // ── Subject mutations ─────────────────────────────────────────────────────
 
 export function useCreateSubject() {
