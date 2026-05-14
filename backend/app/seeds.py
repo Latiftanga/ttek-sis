@@ -3,13 +3,50 @@ from sqlalchemy import select, func
 from pwdlib import PasswordHash
 from pwdlib.hashers.argon2 import Argon2Hasher
 
+from uuid import UUID
+
 from app.models.assessment import GradingScale, GradingBand
-from app.models.programme import SystemProgramme
+from app.models.programme import SystemProgramme, SchoolProgramme
 from app.models.academic import Subject
 from app.models.ges_rank import GESRank
 from app.models.school import School
 from app.models.user import User
 from app.models.staff import Staff
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# PER-SCHOOL HELPERS
+# ══════════════════════════════════════════════════════════════════════════
+
+async def copy_system_programmes_to_school(
+    db: AsyncSession, school_id: UUID
+) -> None:
+    """
+    Seed a new SHS school with the GES standard programmes so admins see
+    them in the Programmes tab and can customise. Idempotent — skips
+    programmes the school already has.
+    """
+    existing_res = await db.execute(
+        select(SchoolProgramme.name).where(SchoolProgramme.school_id == school_id)
+    )
+    existing_names = {row[0] for row in existing_res.all()}
+
+    sys_progs = await db.execute(
+        select(SystemProgramme)
+        .where(SystemProgramme.is_active.is_(True))
+        .order_by(SystemProgramme.order)
+    )
+    for p in sys_progs.scalars().all():
+        if p.name in existing_names:
+            continue
+        db.add(SchoolProgramme(
+            school_id=school_id,
+            name=p.name,
+            short_name=p.short_name,
+            description=p.description,
+            order=p.order,
+            is_active=True,
+        ))
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -341,6 +378,11 @@ async def seed_demo_school(db: AsyncSession) -> None:
         role="school_admin",
         staff_id=staff.id,
     ))
+
+    # SHS schools start with the GES standard programmes pre-populated.
+    if school.school_type == "shs":
+        await copy_system_programmes_to_school(db, school.id)
+
     await db.commit()
 
 

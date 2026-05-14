@@ -253,19 +253,22 @@ async def create_class(
         )
 
     if body.programme:
-        # Check school-specific programmes first, then fall back to GES system programmes.
-        # This lets schools use standard GES programmes without manual setup.
+        # Frontend posts either the programme name ("Science") or its short
+        # code ("SCI") — match against either column. Check school-specific
+        # programmes first, then fall back to GES system programmes.
         prog_res = await db.execute(
             select(SchoolProgramme).where(
                 SchoolProgramme.school_id == school.id,
-                SchoolProgramme.name == body.programme,
+                (SchoolProgramme.name == body.programme)
+                | (SchoolProgramme.short_name == body.programme),
                 SchoolProgramme.is_active.is_(True),
             )
         )
         if not prog_res.scalar_one_or_none():
             sys_res = await db.execute(
                 select(SystemProgramme).where(
-                    SystemProgramme.name == body.programme,
+                    (SystemProgramme.name == body.programme)
+                    | (SystemProgramme.short_name == body.programme),
                     SystemProgramme.is_active.is_(True),
                 )
             )

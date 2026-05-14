@@ -13,6 +13,7 @@ from app.config import settings
 from app.models.user import User
 from app.models.school import School
 from app.models.staff import Staff
+from app.seeds import copy_system_programmes_to_school
 
 from app.schemas.user import (
     LoginRequest, TokenResponse, SchoolBrief, UserResponse,
@@ -178,6 +179,11 @@ async def register_school(
         staff_id=staff.id,
     )
     db.add(user)
+
+    # SHS schools start with the GES standard programmes pre-populated.
+    if school.school_type == "shs":
+        await copy_system_programmes_to_school(db, school.id)
+
     await db.commit()
 
     return {

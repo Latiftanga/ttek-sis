@@ -47,6 +47,5 @@ export function getApiError(err: unknown, fallback = "Something went wrong"): st
 
 export const SCHOOL_TYPES: Record<string, string> = {
   basic: "Basic School",
-  shs: "SHS",
-  combined: "Combined School",
+  shs:   "Senior High School",
 };

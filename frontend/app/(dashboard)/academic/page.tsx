@@ -118,12 +118,10 @@ export default function AcademicPage() {
   const isAdmin = user?.role === "school_admin" || user?.role === "headteacher";
   const schoolType = school?.school_type ?? "basic";
 
-  // Hide subjects tab for SHS-only schools (they use the same subjects structure
-  // but subjects aren't school-type specific enough to warrant a separate tab)
-  const visibleTabs = TABS.filter((t) => {
-    // Subjects tab is visible to all school types
-    return true;
-  });
+  // Programmes only apply to SHS schools.
+  const visibleTabs = TABS.filter(
+    (t) => !(t.key === "programmes" && schoolType !== "shs"),
+  );
 
   return (
     <div className="space-y-6">
@@ -716,13 +714,10 @@ function SubjectsSection({ isAdmin, schoolType }: { isAdmin: boolean; schoolType
     }
   }
 
-  // For basic schools: show only "all" and "basic" level groups, hide "shs"
-  // For SHS-only: show only "all" and "shs"
-  // For combined: show all
+  // Basic schools: "All" or "Basic". SHS schools: "All" or "SHS".
   const LEVEL_GROUP_OPTIONS: Record<string, { value: string; label: string }[]> = {
-    basic:    [{ value: "all", label: "All levels" }, { value: "basic", label: "Basic" }],
-    shs:      [{ value: "all", label: "All levels" }, { value: "shs",   label: "SHS" }],
-    combined: [{ value: "all", label: "All levels" }, { value: "basic", label: "Basic" }, { value: "shs", label: "SHS" }],
+    basic: [{ value: "all", label: "All levels" }, { value: "basic", label: "Basic" }],
+    shs:   [{ value: "all", label: "All levels" }, { value: "shs",   label: "SHS" }],
   };
   const levelGroupOptions = LEVEL_GROUP_OPTIONS[schoolType] ?? LEVEL_GROUP_OPTIONS.basic;
 
