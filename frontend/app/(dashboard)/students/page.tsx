@@ -8,6 +8,7 @@ import {
   MoreHorizontal, Eye, Pencil, Trash2, Phone, Download, X,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import { studentsApi } from "@/lib/api";
 import { useStudents, useDeleteStudent, type Student } from "@/lib/hooks/useStudents";
 import { useAuthStore } from "@/lib/store";
 import { formatDate, getInitials, getApiError } from "@/lib/utils";
@@ -277,7 +278,6 @@ export default function StudentsPage() {
     if (selectedIds.size === 0) return;
     setApplyingBulk(true);
     try {
-      const { studentsApi } = await import("@/lib/api");
       const results = await Promise.allSettled(
         [...selectedIds].map((id) => studentsApi.update(id, { status: bulkStatus }))
       );
@@ -300,7 +300,6 @@ export default function StudentsPage() {
   async function handleExport() {
     setExporting(true);
     try {
-      const { studentsApi } = await import("@/lib/api");
       const all: Student[] = await studentsApi.list({
         ...(debouncedSearch ? { search: debouncedSearch } : {}),
         ...(status ? { status } : {}),

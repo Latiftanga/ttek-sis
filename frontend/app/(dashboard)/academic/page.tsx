@@ -52,6 +52,11 @@ const LEVEL_LABELS: Record<string, string> = {
   preschool: "Pre-School", kg: "KG", basic: "Basic", shs: "SHS",
 };
 
+const SCHOOL_LEVEL_GROUPS: Record<string, string[]> = {
+  basic: ["preschool", "kg", "basic"],
+  shs:   ["shs"],
+};
+
 // ── Year form schema ──────────────────────────────────────────────────────
 
 const yearSchema = z
@@ -527,11 +532,6 @@ function ClassesSection({ isAdmin, schoolType }: { isAdmin: boolean; schoolType:
 
   const classes = showInactive ? allClasses : allClasses.filter((c) => c.is_active);
 
-  // Group by level_group, filtered by what's valid for this school type
-  const SCHOOL_LEVEL_GROUPS: Record<string, string[]> = {
-    basic: ["preschool", "kg", "basic"],
-    shs:   ["shs"],
-  };
   const validGroups = SCHOOL_LEVEL_GROUPS[schoolType] ?? ["basic"];
   const grouped = validGroups.reduce<Record<string, Class[]>>((acc, g) => {
     acc[g] = classes.filter((c) => c.level_group === g);
@@ -1091,7 +1091,7 @@ function HousesSection({ isAdmin }: { isAdmin: boolean }) {
   const [editTarget, setEditTarget]     = useState<SchoolHouse | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SchoolHouse | null>(null);
 
-  const { register, handleSubmit, reset, watch, formState: { errors, isSubmitting } } =
+  const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } =
     useForm<HouseValues>({ resolver: zodResolver(houseSchema) });
 
   const colorValue = watch("color");
@@ -1205,10 +1205,7 @@ function HousesSection({ isAdmin }: { isAdmin: boolean }) {
                 type="color"
                 className="h-9 w-14 cursor-pointer rounded border border-gray-200 bg-white p-0.5 dark:border-gray-700 dark:bg-gray-900"
                 value={colorValue || "#6b7280"}
-                onChange={(e) => {
-                  const el = document.getElementById("house_color") as HTMLInputElement | null;
-                  if (el) el.value = e.target.value;
-                }}
+                onChange={(e) => setValue("color", e.target.value, { shouldValidate: true })}
               />
               <Input
                 id="house_color"

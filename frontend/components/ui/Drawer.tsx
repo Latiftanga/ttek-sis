@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -18,6 +18,7 @@ export default function Drawer({
   children,
   width = "lg",
 }: DrawerProps) {
+  const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
 
@@ -34,14 +35,16 @@ export default function Drawer({
     if (!open) return;
     const el = panelRef.current;
     if (!el) return;
-    const focusable = el.querySelectorAll<HTMLElement>(
+    const query = () => el.querySelectorAll<HTMLElement>(
       'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
     );
-    focusable[0]?.focus();
+    query()[0]?.focus();
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-      if (e.key === "Tab" && focusable.length > 0) {
+      if (e.key === "Escape") { onClose(); return; }
+      if (e.key === "Tab") {
+        const focusable = query();
+        if (focusable.length === 0) return;
         const first = focusable[0];
         const last = focusable[focusable.length - 1];
         if (e.shiftKey && document.activeElement === first) {
@@ -69,7 +72,7 @@ export default function Drawer({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label={title}
+      aria-labelledby={titleId}
       className={cn(
         "fixed inset-0 z-50 flex justify-end transition-all",
         open ? "pointer-events-auto" : "pointer-events-none"
@@ -96,7 +99,7 @@ export default function Drawer({
       >
         {/* header */}
         <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-gray-700">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-white">
+          <h2 id={titleId} className="text-base font-semibold text-gray-900 dark:text-white">
             {title}
           </h2>
           <button

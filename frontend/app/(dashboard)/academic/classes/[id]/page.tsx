@@ -327,18 +327,14 @@ function DemoteModal({
 
 function UnenrollModal({ student, onClose }: { student: ClassStudent; onClose: () => void }) {
   const unenroll = useUnenrollStudent();
-  const [submitting, setSubmitting] = useState(false);
 
   async function handleConfirm() {
-    setSubmitting(true);
     try {
       await unenroll.mutateAsync(student.enrollment_id);
       toast.success(`${student.first_name} ${student.last_name} unenrolled`);
       onClose();
     } catch (err) {
       toast.error(getApiError(err));
-    } finally {
-      setSubmitting(false);
     }
   }
 
@@ -354,7 +350,7 @@ function UnenrollModal({ student, onClose }: { student: ClassStudent; onClose: (
       </p>
       <div className="mt-5 flex justify-end gap-3 border-t border-gray-100 pt-4 dark:border-gray-800">
         <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button type="button" variant="danger" loading={submitting} onClick={handleConfirm}>
+        <Button type="button" variant="danger" loading={unenroll.isPending} onClick={handleConfirm}>
           Unenroll
         </Button>
       </div>
@@ -580,63 +576,59 @@ function StudentsTab({
       )}
 
       {/* Action dropdown */}
-      {menuOpen && (
-        <div
-          ref={menuRef}
-          style={{ position: "fixed", top: menuPos.top, right: menuPos.right, zIndex: 50 }}
-          className="min-w-[160px] rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900"
-        >
-          {(() => {
-            const s = students.find((x) => x.enrollment_id === menuOpen)!;
-            if (!s) return null;
-            return (
-              <>
-                {!isFinalYear && (
-                  <button
-                    onClick={() => { onAction(s, "promote"); setMenuOpen(null); }}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"
-                  >
-                    <TrendingUp className="h-4 w-4 text-emerald-500" />Promote
-                  </button>
-                )}
-                <button
-                  onClick={() => { onAction(s, "demote"); setMenuOpen(null); }}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"
-                >
-                  <TrendingDown className="h-4 w-4 text-orange-500" />Demote
-                </button>
-                <button
-                  onClick={() => { onAction(s, "repeat"); setMenuOpen(null); }}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"
-                >
-                  <RotateCcw className="h-4 w-4 text-amber-500" />Repeat Year
-                </button>
-                <button
-                  onClick={() => { onAction(s, "transfer"); setMenuOpen(null); }}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"
-                >
-                  <ArrowRightFromLine className="h-4 w-4 text-blue-500" />Transfer Out
-                </button>
-                {isFinalYear && (
-                  <button
-                    onClick={() => { onAction(s, "graduate"); setMenuOpen(null); }}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"
-                  >
-                    <GraduationCap className="h-4 w-4 text-purple-500" />Graduate
-                  </button>
-                )}
-                <div className="my-1 border-t border-gray-100 dark:border-gray-800" />
-                <button
-                  onClick={() => { onAction(s, "unenroll"); setMenuOpen(null); }}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
-                >
-                  <UserMinus className="h-4 w-4" />Unenroll
-                </button>
-              </>
-            );
-          })()}
-        </div>
-      )}
+      {(() => {
+        const activeStudent = menuOpen ? students.find((x) => x.enrollment_id === menuOpen) : null;
+        if (!activeStudent) return null;
+        return (
+          <div
+            ref={menuRef}
+            style={{ position: "fixed", top: menuPos.top, right: menuPos.right, zIndex: 50 }}
+            className="min-w-[160px] rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900"
+          >
+            {!isFinalYear && (
+              <button
+                onClick={() => { onAction(activeStudent, "promote"); setMenuOpen(null); }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"
+              >
+                <TrendingUp className="h-4 w-4 text-emerald-500" />Promote
+              </button>
+            )}
+            <button
+              onClick={() => { onAction(activeStudent, "demote"); setMenuOpen(null); }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"
+            >
+              <TrendingDown className="h-4 w-4 text-orange-500" />Demote
+            </button>
+            <button
+              onClick={() => { onAction(activeStudent, "repeat"); setMenuOpen(null); }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"
+            >
+              <RotateCcw className="h-4 w-4 text-amber-500" />Repeat Year
+            </button>
+            <button
+              onClick={() => { onAction(activeStudent, "transfer"); setMenuOpen(null); }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"
+            >
+              <ArrowRightFromLine className="h-4 w-4 text-blue-500" />Transfer Out
+            </button>
+            {isFinalYear && (
+              <button
+                onClick={() => { onAction(activeStudent, "graduate"); setMenuOpen(null); }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"
+              >
+                <GraduationCap className="h-4 w-4 text-purple-500" />Graduate
+              </button>
+            )}
+            <div className="my-1 border-t border-gray-100 dark:border-gray-800" />
+            <button
+              onClick={() => { onAction(activeStudent, "unenroll"); setMenuOpen(null); }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
+            >
+              <UserMinus className="h-4 w-4" />Unenroll
+            </button>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -897,17 +889,17 @@ function SubjectsTab({ class_, isAdmin }: { class_: Class; isAdmin: boolean }) {
         available={availableSubjects}
         onClose={() => setAddOpen(false)}
         onAdd={async (subjectIds) => {
-          let added = 0;
-          const failures: string[] = [];
-          for (const id of subjectIds) {
-            try {
-              await addCs.mutateAsync({ subject_id: id });
-              added++;
-            } catch (err) {
-              const subj = availableSubjects.find((s) => s.id === id);
-              failures.push(`${subj?.name ?? id}: ${getApiError(err)}`);
-            }
-          }
+          const results = await Promise.allSettled(
+            subjectIds.map((id) => addCs.mutateAsync({ subject_id: id }))
+          );
+          const added = results.filter((r) => r.status === "fulfilled").length;
+          const failures = results
+            .map((r, i) =>
+              r.status === "rejected"
+                ? `${availableSubjects.find((s) => s.id === subjectIds[i])?.name ?? subjectIds[i]}: ${getApiError(r.reason)}`
+                : null
+            )
+            .filter(Boolean) as string[];
           if (added > 0) toast.success(`${added} subject${added !== 1 ? "s" : ""} added`);
           failures.forEach((f) => toast.error(f));
           if (failures.length === 0) setAddOpen(false);
