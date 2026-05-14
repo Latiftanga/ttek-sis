@@ -179,14 +179,12 @@ class Class(Base):
 class Subject(Base):
     __tablename__ = "subjects"
 
-    id          = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    school_id   = Column(UUID(as_uuid=True),
-                        ForeignKey("schools.id", ondelete="CASCADE"),
-                        nullable=True)
-    name        = Column(String(150), nullable=False)
-    code        = Column(String(20))
-    category    = Column(String(20), default="core")
-    # "core" | "elective" | "vocational"
-    level_group = Column(String(20), default="all")
-    # "all" | "basic" | "shs"
-    created_at  = Column(DateTime(timezone=True), server_default=func.now())
+    id         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    school_id  = Column(UUID(as_uuid=True),
+                       ForeignKey("schools.id", ondelete="CASCADE"),
+                       nullable=False)
+    name       = Column(String(150), nullable=False)
+    code       = Column(String(20))
+    category   = Column(String(20), nullable=True)
+    # SHS only: "core" | "elective". NULL for basic schools.
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

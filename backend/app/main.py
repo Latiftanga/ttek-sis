@@ -17,7 +17,6 @@ from app.models import *  # noqa
 from app.seeds import (
     seed_grading_scales,
     seed_system_programmes,
-    seed_default_subjects,
     seed_ges_ranks,
     seed_demo_school,
 )
@@ -29,7 +28,6 @@ async def lifespan(app: FastAPI):
     async with AsyncSessionLocal() as db:
         await seed_grading_scales(db)
         await seed_system_programmes(db)
-        await seed_default_subjects(db)
         await seed_ges_ranks(db)
         await seed_demo_school(db)
         yield

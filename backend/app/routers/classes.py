@@ -412,7 +412,7 @@ async def add_class_subject(
     subj_res = await db.execute(
         select(Subject).where(
             Subject.id == body.subject_id,
-            (Subject.school_id == school.id) | (Subject.school_id.is_(None)),
+            Subject.school_id == school.id,
         )
     )
     if not subj_res.scalar_one_or_none():
@@ -515,19 +515,12 @@ async def remove_class_subject(
 @router.get("/subjects", response_model=List[SubjectResponse])
 async def list_subjects(
     user: CurrentUser, school: CurrentSchool, db: DB,
-    level_group: Optional[str] = Query(None),
 ):
-    # Include both the school's own subjects AND seeded GES system subjects
-    # (school_id NULL). System subjects are read-only — update/delete still
-    # filter by school_id so admins can't edit them.
-    query = select(Subject).where(
-        (Subject.school_id == school.id) | (Subject.school_id.is_(None))
+    result = await db.execute(
+        select(Subject)
+        .where(Subject.school_id == school.id)
+        .order_by(Subject.name)
     )
-    if level_group:
-        query = query.where(
-            (Subject.level_group == level_group) | (Subject.level_group == "all")
-        )
-    result = await db.execute(query.order_by(Subject.name))
     return result.scalars().all()
 
 
@@ -544,12 +537,14 @@ async def create_subject(
     if exists.scalar_one_or_none():
         raise HTTPException(409, f"Subject '{body.name}' already exists")
 
+    # Category is meaningful only for SHS schools.
+    category = body.category if school.school_type == "shs" else None
+
     subject = Subject(
         school_id=school.id,
         name=body.name,
         code=body.code,
-        category=body.category,
-        level_group=body.level_group,
+        category=category,
     )
     db.add(subject)
     await db.commit()
@@ -579,9 +574,7 @@ async def update_subject(
 
 @router.delete("/subjects/{subject_id}", status_code=204)
 async def delete_subject(
-    subject_id: UUID,
-    _: Annotated[User, Depends(require_roles("school_admin"))],
-    school: CurrentSchool, db: DB,
+    subject_id: UUID, _: WriteRole, school: CurrentSchool, db: DB,
 ):
     result = await db.execute(
         select(Subject).where(

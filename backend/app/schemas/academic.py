@@ -1,6 +1,6 @@
 from uuid import UUID
 from datetime import date, datetime
-from typing import Optional, List
+from typing import Literal, Optional, List
 from pydantic import BaseModel, field_validator, model_validator
 import re
 
@@ -186,45 +186,29 @@ class ClassResponse(BaseModel):
 # SUBJECT
 # ══════════════════════════════════════════════════════
 
-VALID_CATEGORIES = {"core", "elective", "vocational"}
-VALID_SUBJECT_LEVELS = {"all", "basic", "shs"}
+SubjectCategory = Literal["core", "elective"]
 
 
 class SubjectCreate(BaseModel):
     name: str
     code: Optional[str] = None
-    category: str = "core"
-    level_group: str = "all"
-
-    @field_validator("category")
-    @classmethod
-    def validate_category(cls, v):
-        if v not in VALID_CATEGORIES:
-            raise ValueError(f"Category must be one of: {VALID_CATEGORIES}")
-        return v
-
-    @field_validator("level_group")
-    @classmethod
-    def validate_level_group(cls, v):
-        if v not in VALID_SUBJECT_LEVELS:
-            raise ValueError(f"level_group must be one of: {VALID_SUBJECT_LEVELS}")
-        return v
+    category: Optional[SubjectCategory] = None
+    # category only meaningful for SHS schools (core / elective).
+    # Basic schools leave it null.
 
 
 class SubjectUpdate(BaseModel):
     name: Optional[str] = None
     code: Optional[str] = None
-    category: Optional[str] = None
-    level_group: Optional[str] = None
+    category: Optional[SubjectCategory] = None
 
 
 class SubjectResponse(BaseModel):
     id: UUID
-    school_id: Optional[UUID] = None
+    school_id: UUID
     name: str
     code: Optional[str] = None
-    category: str
-    level_group: str
+    category: Optional[str] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

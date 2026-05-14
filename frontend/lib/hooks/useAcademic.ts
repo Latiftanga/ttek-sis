@@ -43,11 +43,10 @@ export interface Class {
 
 export interface Subject {
   id: string;
-  school_id: string | null;   // null = seeded GES system subject (read-only)
+  school_id: string;
   name: string;
   code: string | null;
-  category: string;
-  level_group: string;
+  category: string | null;   // SHS only — null for basic schools
   created_at: string;
 }
 
@@ -444,6 +443,16 @@ export function useCreateSubject() {
   const slug = useSlug();
   return useMutation({
     mutationFn: (body: unknown) => academicApi.createSubject(body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [slug, "subjects"] }),
+  });
+}
+
+export function useUpdateSubject() {
+  const qc = useQueryClient();
+  const slug = useSlug();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: unknown }) =>
+      academicApi.updateSubject(id, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: [slug, "subjects"] }),
   });
 }

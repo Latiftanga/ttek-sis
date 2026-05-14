@@ -29,6 +29,7 @@ import {
   useCreateSubject, useDeleteSubject,
   useCreateProgramme, useUpdateProgramme, useDeleteProgramme,
   useCreateHouse, useUpdateHouse, useDeleteHouse,
+  useUpdateSubject,
   type AcademicYear, type Term, type Class, type Subject,
   type SchoolProgramme, type SchoolHouse,
 } from "@/lib/hooks/useAcademic";
@@ -101,10 +102,9 @@ type HouseValues = z.infer<typeof houseSchema>;
 // ── Subject form schema ───────────────────────────────────────────────────
 
 const subjectSchema = z.object({
-  name:        z.string().min(1, "Name is required"),
-  code:        z.string().optional(),
-  category:    z.enum(["core", "elective", "vocational"]),
-  level_group: z.enum(["all", "basic", "shs"]),
+  name:     z.string().min(1, "Name is required"),
+  code:     z.string().optional(),
+  category: z.enum(["core", "elective"]).nullable().optional(),
 });
 type SubjectValues = z.infer<typeof subjectSchema>;
 
@@ -670,6 +670,55 @@ function ClassesSection({ isAdmin, schoolType }: { isAdmin: boolean; schoolType:
   );
 }
 
+// ── Edit subject modal ────────────────────────────────────────────────────
+
+function EditSubjectModal({
+  subject, isSHS, onClose, onSave,
+}: {
+  subject: Subject;
+  isSHS: boolean;
+  onClose: () => void;
+  onSave: (body: { name?: string; code?: string | null; category?: string | null }) => void;
+}) {
+  const { register, handleSubmit, formState: { errors, isSubmitting } } =
+    useForm<SubjectValues>({
+      resolver: zodResolver(subjectSchema),
+      defaultValues: {
+        name: subject.name,
+        code: subject.code ?? "",
+        category: (subject.category as "core" | "elective" | null) ?? (isSHS ? "core" : null),
+      },
+    });
+
+  function onSubmit(values: SubjectValues) {
+    onSave({
+      name: values.name,
+      code: values.code || null,
+      category: isSHS ? values.category ?? null : null,
+    });
+  }
+
+  return (
+    <Modal open onClose={onClose} title="Edit Subject" size="sm">
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
+        <Input id="edit_subj_name" label="Subject Name *" error={errors.name?.message} {...register("name")} />
+        <Input id="edit_subj_code" label="Code (optional)" error={errors.code?.message} {...register("code")} />
+        {isSHS && (
+          <Select id="edit_subj_category" label="Category" error={errors.category?.message} {...register("category")}>
+            <option value="core">Core</option>
+            <option value="elective">Elective</option>
+          </Select>
+        )}
+        <div className="flex justify-end gap-3 border-t border-gray-100 pt-4 dark:border-gray-800">
+          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button type="submit" loading={isSubmitting}>Save</Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+
 // ═════════════════════════════════════════════════════════════════════════
 // SUBJECTS SECTION
 // ═════════════════════════════════════════════════════════════════════════
@@ -677,24 +726,27 @@ function ClassesSection({ isAdmin, schoolType }: { isAdmin: boolean; schoolType:
 function SubjectsSection({ isAdmin, schoolType }: { isAdmin: boolean; schoolType: string }) {
   const { data: subjects = [], isLoading } = useSubjects();
   const createSubject = useCreateSubject();
+  const updateSubject = useUpdateSubject();
   const deleteSubject = useDeleteSubject();
 
   const [addOpen, setAddOpen]             = useState(false);
+  const [editTarget, setEditTarget]       = useState<Subject | null>(null);
   const [deleteTarget, setDeleteTarget]   = useState<Subject | null>(null);
+
+  const isSHS = schoolType === "shs";
 
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } =
     useForm<SubjectValues>({
       resolver: zodResolver(subjectSchema),
-      defaultValues: { name: "", code: "", category: "core", level_group: "all" },
+      defaultValues: { name: "", code: "", category: isSHS ? "core" : null },
     });
 
   async function onAddSubject(values: SubjectValues) {
     try {
       await createSubject.mutateAsync({
-        name:        values.name,
-        code:        values.code || undefined,
-        category:    values.category,
-        level_group: values.level_group,
+        name:     values.name,
+        code:     values.code || undefined,
+        category: isSHS ? values.category : null,
       });
       toast.success(`Subject "${values.name}" added`);
       reset();
@@ -714,24 +766,17 @@ function SubjectsSection({ isAdmin, schoolType }: { isAdmin: boolean; schoolType
     }
   }
 
-  // Basic schools: "All" or "Basic". SHS schools: "All" or "SHS".
-  const LEVEL_GROUP_OPTIONS: Record<string, { value: string; label: string }[]> = {
-    basic: [{ value: "all", label: "All levels" }, { value: "basic", label: "Basic" }],
-    shs:   [{ value: "all", label: "All levels" }, { value: "shs",   label: "SHS" }],
-  };
-  const levelGroupOptions = LEVEL_GROUP_OPTIONS[schoolType] ?? LEVEL_GROUP_OPTIONS.basic;
-
-  // Group subjects by category
+  // Group subjects by category for SHS; basic schools show a flat list.
   const byCategory = subjects.reduce<Record<string, Subject[]>>((acc, s) => {
-    const key = s.category;
+    const key = s.category ?? "all";
     if (!acc[key]) acc[key] = [];
     acc[key].push(s);
     return acc;
   }, {});
 
-  const categoryOrder = ["core", "elective", "vocational"];
+  const categoryOrder = isSHS ? ["core", "elective"] : ["all"];
   const categoryLabels: Record<string, string> = {
-    core: "Core", elective: "Elective", vocational: "Vocational",
+    core: "Core", elective: "Elective", all: "Subjects",
   };
 
   if (isLoading) {
@@ -777,26 +822,23 @@ function SubjectsSection({ isAdmin, schoolType }: { isAdmin: boolean; schoolType
                           <span className="ml-2 font-mono text-xs text-gray-400">{s.code}</span>
                         )}
                       </div>
-                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${
-                        s.level_group === "all"   ? "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400" :
-                        s.level_group === "basic" ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400" :
-                        "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400"
-                      }`}>
-                        {s.level_group === "all" ? "All" : capitalize(s.level_group)}
-                      </span>
-                      {s.school_id === null && (
-                        <span className="shrink-0 rounded-full bg-purple-50 px-2 py-0.5 text-xs text-purple-600 dark:bg-purple-950/40 dark:text-purple-300" title="GES standard subject — read-only">
-                          GES
-                        </span>
-                      )}
-                      {isAdmin && s.school_id !== null && (
-                        <button
-                          onClick={() => setDeleteTarget(s)}
-                          className="shrink-0 rounded p-1 text-gray-300 hover:bg-red-50 hover:text-red-500 dark:text-gray-600 dark:hover:bg-red-950/40 dark:hover:text-red-400"
-                          aria-label={`Remove ${s.name}`}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                      {isAdmin && (
+                        <>
+                          <button
+                            onClick={() => setEditTarget(s)}
+                            className="shrink-0 rounded p-1 text-gray-300 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+                            aria-label={`Edit ${s.name}`}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => setDeleteTarget(s)}
+                            className="shrink-0 rounded p-1 text-gray-300 hover:bg-red-50 hover:text-red-500 dark:text-gray-600 dark:hover:bg-red-950/40 dark:hover:text-red-400"
+                            aria-label={`Remove ${s.name}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </>
                       )}
                     </div>
                   ))}
@@ -805,6 +847,24 @@ function SubjectsSection({ isAdmin, schoolType }: { isAdmin: boolean; schoolType
             );
           })}
         </div>
+      )}
+
+      {/* Edit subject modal */}
+      {editTarget && (
+        <EditSubjectModal
+          subject={editTarget}
+          isSHS={isSHS}
+          onClose={() => setEditTarget(null)}
+          onSave={async (body) => {
+            try {
+              await updateSubject.mutateAsync({ id: editTarget.id, body });
+              toast.success(`"${body.name ?? editTarget.name}" updated`);
+              setEditTarget(null);
+            } catch (err) {
+              toast.error(getApiError(err));
+            }
+          }}
+        />
       )}
 
       {/* Add subject modal */}
@@ -824,16 +884,12 @@ function SubjectsSection({ isAdmin, schoolType }: { isAdmin: boolean; schoolType
             error={errors.code?.message}
             {...register("code")}
           />
-          <Select id="subj_category" label="Category" error={errors.category?.message} {...register("category")}>
-            <option value="core">Core</option>
-            <option value="elective">Elective</option>
-            <option value="vocational">Vocational</option>
-          </Select>
-          <Select id="subj_level" label="Level Group" error={errors.level_group?.message} {...register("level_group")}>
-            {levelGroupOptions.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </Select>
+          {isSHS && (
+            <Select id="subj_category" label="Category" error={errors.category?.message} {...register("category")}>
+              <option value="core">Core</option>
+              <option value="elective">Elective</option>
+            </Select>
+          )}
           <div className="flex justify-end gap-3 border-t border-gray-100 pt-4 dark:border-gray-800">
             <Button type="button" variant="secondary" onClick={() => setAddOpen(false)}>Cancel</Button>
             <Button type="submit" loading={isSubmitting}>Add Subject</Button>

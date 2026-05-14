@@ -1128,11 +1128,10 @@ async def _assert_term_in_school(
 async def _assert_subject_in_school(
     subject_id: UUID, school_id: UUID, db: AsyncSession
 ) -> None:
-    # System subjects (school_id NULL) are also valid.
     result = await db.execute(
         select(Subject.id).where(
             Subject.id == subject_id,
-            (Subject.school_id == school_id) | (Subject.school_id.is_(None)),
+            Subject.school_id == school_id,
         )
     )
     if not result.scalar_one_or_none():

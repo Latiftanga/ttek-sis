@@ -184,65 +184,77 @@ async def seed_system_programmes(db: AsyncSession) -> None:
 # DEFAULT SUBJECTS
 # ══════════════════════════════════════════════════════════════════════════
 
-DEFAULT_SUBJECTS = [
-    # (name, code, category, level_group)
+# Subjects copied to each school on creation. Schools are single-level
+# (basic OR shs), so two separate lists.
 
-    # ── Basic school core subjects (Basic 1-9) ────────────────────
-    ("English Language",              "ENG",  "core",     "basic"),
-    ("Mathematics",                   "MATH", "core",     "basic"),
-    ("General Science",               "SCI",  "core",     "basic"),
-    ("Social Studies",                "SOC",  "core",     "basic"),
-    ("Religious and Moral Education", "RME",  "core",     "basic"),
-    ("Career Technology",             "CT",   "core",     "basic"),
-    ("Creative Arts and Design",      "CAD",  "core",     "basic"),
-    ("Ghanaian Language",             "GHL",  "core",     "basic"),
-    ("French",                        "FRE",  "core",     "basic"),
-    ("Computing",                     "ICT",  "core",     "basic"),
-    ("Physical Education and Health", "PHE",  "core",     "basic"),
-
-    # ── SHS core subjects (all programmes) ───────────────────────
-    ("English Language",              "ENG",  "core",     "shs"),
-    ("Mathematics",                   "MATH", "core",     "shs"),
-    ("General Science",               "SCI",  "core",     "shs"),
-    ("Social Studies",                "SOC",  "core",     "shs"),
-    ("Physical Education and Health", "PHE",  "core",     "shs"),
-
-    # ── SHS Science electives ─────────────────────────────────────
-    ("Biology",                       "BIO",  "elective", "shs"),
-    ("Chemistry",                     "CHEM", "elective", "shs"),
-    ("Physics",                       "PHY",  "elective", "shs"),
-    ("Engineering Science",           "ENGS", "elective", "shs"),
-
-    # ── SHS General Arts electives ────────────────────────────────
-    ("Literature-in-English",         "LIT",  "elective", "shs"),
-    ("Government",                    "GOV",  "elective", "shs"),
-    ("History",                       "HIS",  "elective", "shs"),
-    ("Geography",                     "GEO",  "elective", "shs"),
-    ("Economics",                     "ECO",  "elective", "shs"),
-
-    # ── SHS Business electives ────────────────────────────────────
-    ("Business Management",           "BMT",  "elective", "shs"),
-    ("Accounting",                    "ACC",  "elective", "shs"),
-
-    # ── SHS Home Economics electives ─────────────────────────────
-    ("Food and Nutrition",            "FND",  "elective", "shs"),
-    ("Management in Living",          "MIL",  "elective", "shs"),
-    ("Clothing and Textiles",         "CLT",  "elective", "shs"),
-
-    # ── SHS Art / Visual Arts electives ───────────────────────────
-    ("Art and Design Studio",         "ADS",  "elective", "shs"),
-    ("General Knowledge in Art",      "GKA",  "elective", "shs"),
-    ("Performing Arts",               "PFA",  "elective", "shs"),
-
-    # ── SHS Agriculture elective ──────────────────────────────────
-    ("Agriculture",                   "AGR",  "elective", "shs"),
-
-    # ── SHS Language electives ────────────────────────────────────
-    ("French",                        "FRE",  "elective", "shs"),
-    ("Arabic",                        "ARB",  "elective", "shs"),
-    ("Latin",                         "LAT",  "elective", "shs"),
-    ("Spanish",                       "SPA",  "elective", "shs"),
+BASIC_SUBJECTS = [
+    # (name, code)
+    ("English Language",              "ENG"),
+    ("Mathematics",                   "MATH"),
+    ("General Science",               "SCI"),
+    ("Social Studies",                "SOC"),
+    ("Religious and Moral Education", "RME"),
+    ("Career Technology",             "CT"),
+    ("Creative Arts and Design",      "CAD"),
+    ("Ghanaian Language",             "GHL"),
+    ("French",                        "FRE"),
+    ("Computing",                     "ICT"),
+    ("Physical Education and Health", "PHE"),
 ]
+
+SHS_SUBJECTS = [
+    # (name, code, category)
+    # Core (all SHS students take these)
+    ("English Language",              "ENG",  "core"),
+    ("Mathematics",                   "MATH", "core"),
+    ("General Science",               "SCI",  "core"),
+    ("Social Studies",                "SOC",  "core"),
+    ("Physical Education and Health", "PHE",  "core"),
+    # Electives — vary by programme
+    ("Biology",                       "BIO",  "elective"),
+    ("Chemistry",                     "CHEM", "elective"),
+    ("Physics",                       "PHY",  "elective"),
+    ("Engineering Science",           "ENGS", "elective"),
+    ("Literature-in-English",         "LIT",  "elective"),
+    ("Government",                    "GOV",  "elective"),
+    ("History",                       "HIS",  "elective"),
+    ("Geography",                     "GEO",  "elective"),
+    ("Economics",                     "ECO",  "elective"),
+    ("Business Management",           "BMT",  "elective"),
+    ("Accounting",                    "ACC",  "elective"),
+    ("Food and Nutrition",            "FND",  "elective"),
+    ("Management in Living",          "MIL",  "elective"),
+    ("Clothing and Textiles",         "CLT",  "elective"),
+    ("Art and Design Studio",         "ADS",  "elective"),
+    ("General Knowledge in Art",      "GKA",  "elective"),
+    ("Performing Arts",               "PFA",  "elective"),
+    ("Agriculture",                   "AGR",  "elective"),
+    ("French",                        "FRE",  "elective"),
+    ("Arabic",                        "ARB",  "elective"),
+    ("Latin",                         "LAT",  "elective"),
+    ("Spanish",                       "SPA",  "elective"),
+]
+
+
+async def copy_default_subjects_to_school(
+    db: AsyncSession, school_id: UUID, school_type: str
+) -> None:
+    """Seed a new school with its default subject catalogue. Idempotent."""
+    existing = await db.execute(
+        select(Subject.name).where(Subject.school_id == school_id)
+    )
+    existing_names = {row[0] for row in existing.all()}
+
+    if school_type == "shs":
+        for name, code, category in SHS_SUBJECTS:
+            if name in existing_names:
+                continue
+            db.add(Subject(school_id=school_id, name=name, code=code, category=category))
+    else:
+        for name, code in BASIC_SUBJECTS:
+            if name in existing_names:
+                continue
+            db.add(Subject(school_id=school_id, name=name, code=code, category=None))
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -383,33 +395,9 @@ async def seed_demo_school(db: AsyncSession) -> None:
     if school.school_type == "shs":
         await copy_system_programmes_to_school(db, school.id)
 
-    await db.commit()
-
-
-async def seed_default_subjects(db: AsyncSession) -> None:
-    """
-    These are stored as school_id=NULL system defaults.
-    When a school is created, relevant subjects are copied
-    based on school type.
-    We use a SystemSubject concept — school_id NULL means system default.
-    """
-    for name, code, category, level_group in DEFAULT_SUBJECTS:
-        exists = await db.execute(
-            select(Subject).where(
-                Subject.name == name,
-                Subject.level_group == level_group,
-                Subject.school_id.is_(None),
-            )
-        )
-        if exists.scalar_one_or_none():
-            continue
-
-        db.add(Subject(
-            school_id=None,
-            name=name,
-            code=code,
-            category=category,
-            level_group=level_group,
-        ))
+    # Every school gets its default subject catalogue.
+    await copy_default_subjects_to_school(db, school.id, school.school_type)
 
     await db.commit()
+
+

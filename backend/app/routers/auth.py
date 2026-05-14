@@ -13,7 +13,7 @@ from app.config import settings
 from app.models.user import User
 from app.models.school import School
 from app.models.staff import Staff
-from app.seeds import copy_system_programmes_to_school
+from app.seeds import copy_system_programmes_to_school, copy_default_subjects_to_school
 
 from app.schemas.user import (
     LoginRequest, TokenResponse, SchoolBrief, UserResponse,
@@ -183,6 +183,9 @@ async def register_school(
     # SHS schools start with the GES standard programmes pre-populated.
     if school.school_type == "shs":
         await copy_system_programmes_to_school(db, school.id)
+
+    # Every school gets its default subject catalogue.
+    await copy_default_subjects_to_school(db, school.id, school.school_type)
 
     await db.commit()
 

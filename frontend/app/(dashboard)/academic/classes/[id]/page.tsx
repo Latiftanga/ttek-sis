@@ -641,6 +641,128 @@ function StudentsTab({
   );
 }
 
+// ── Add subjects modal (multi-select) ────────────────────────────────────
+
+interface AvailableSubject {
+  id: string;
+  name: string;
+  code: string | null;
+  category: string | null;
+}
+
+function AddSubjectsModal({
+  open, className, available, onClose, onAdd,
+}: {
+  open: boolean;
+  className: string;
+  available: AvailableSubject[];
+  onClose: () => void;
+  onAdd: (subjectIds: string[]) => Promise<void>;
+}) {
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!open) setSelected(new Set());
+  }, [open]);
+
+  function toggle(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    setSelected((prev) =>
+      prev.size === available.length ? new Set() : new Set(available.map((s) => s.id)),
+    );
+  }
+
+  async function handleAdd() {
+    if (selected.size === 0) return;
+    setSubmitting(true);
+    try {
+      await onAdd(Array.from(selected));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const allSelected = available.length > 0 && selected.size === available.length;
+
+  return (
+    <Modal open={open} onClose={onClose} title="Add Subjects to Class" size="sm">
+      <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">
+        Pick one or more subjects to add to {className}. Teachers can be assigned after.
+      </p>
+      {available.length === 0 ? (
+        <p className="py-4 text-center text-sm text-gray-400">
+          All available subjects have already been added.
+        </p>
+      ) : (
+        <>
+          <label className="mb-2 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={toggleAll}
+              className="h-4 w-4 rounded accent-[var(--brand)]"
+            />
+            {allSelected ? "Deselect all" : `Select all (${available.length})`}
+          </label>
+          <div className="max-h-72 space-y-1 overflow-y-auto">
+            {available.map((s) => {
+              const checked = selected.has(s.id);
+              return (
+                <label
+                  key={s.id}
+                  className={`flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm ${
+                    checked
+                      ? "border-[var(--brand)] bg-[var(--brand)]/5"
+                      : "border-gray-200 hover:border-gray-300 dark:border-gray-700"
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggle(s.id)}
+                      className="h-4 w-4 rounded accent-[var(--brand)]"
+                    />
+                    <span className="text-gray-900 dark:text-white">{s.name}</span>
+                  </span>
+                  <span className="flex items-center gap-2 text-xs text-gray-400">
+                    {s.code && <span className="font-mono">{s.code}</span>}
+                    {s.category && (
+                      <Badge variant={s.category === "core" ? "green" : "blue"}>
+                        {capitalize(s.category)}
+                      </Badge>
+                    )}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </>
+      )}
+      <div className="mt-4 flex justify-end gap-3 border-t border-gray-100 pt-3 dark:border-gray-800">
+        <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
+        <Button
+          type="button"
+          loading={submitting}
+          disabled={selected.size === 0}
+          onClick={handleAdd}
+        >
+          Add {selected.size > 0 ? `(${selected.size})` : ""}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
+
 // ── Subjects tab — class curriculum + per-subject teacher assignment ─────
 
 function SubjectsTab({ class_, isAdmin }: { class_: Class; isAdmin: boolean }) {
@@ -655,12 +777,9 @@ function SubjectsTab({ class_, isAdmin }: { class_: Class; isAdmin: boolean }) {
   const [editingCsId, setEditingCsId] = useState<string | null>(null);
   const [removeTarget, setRemoveTarget] = useState<ClassSubjectRow | null>(null);
 
-  // Subjects available to add — match this class's level_group, exclude already-added.
+  // School is single-level, so just exclude already-added.
   const assignedIds = new Set(classSubjects.map((cs) => cs.subject_id));
-  const availableSubjects = allSubjects.filter(
-    (s) => (s.level_group === "all" || s.level_group === class_.level_group)
-        && !assignedIds.has(s.id),
-  );
+  const availableSubjects = allSubjects.filter((s) => !assignedIds.has(s.id));
 
   async function handleAssignTeacher(csId: string, teacherId: string | null) {
     try {
@@ -721,9 +840,11 @@ function SubjectsTab({ class_, isAdmin }: { class_: Class; isAdmin: boolean }) {
                     {cs.subject_code && (
                       <span className="font-mono text-xs text-gray-400">{cs.subject_code}</span>
                     )}
-                    <Badge variant={cs.subject_category === "core" ? "green" : "blue"}>
-                      {capitalize(cs.subject_category)}
-                    </Badge>
+                    {cs.subject_category && (
+                      <Badge variant={cs.subject_category === "core" ? "green" : "blue"}>
+                        {capitalize(cs.subject_category)}
+                      </Badge>
+                    )}
                   </div>
                   <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                     {editingCsId === cs.id ? (
@@ -770,46 +891,28 @@ function SubjectsTab({ class_, isAdmin }: { class_: Class; isAdmin: boolean }) {
       )}
 
       {/* Add subject modal */}
-      <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Add Subject to Class" size="sm">
-        <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">
-          Pick a subject to add to {class_.name}. You can assign a teacher now or later.
-        </p>
-        {availableSubjects.length === 0 ? (
-          <p className="py-4 text-center text-sm text-gray-400">
-            All available subjects have already been added.
-          </p>
-        ) : (
-          <div className="max-h-72 space-y-1 overflow-y-auto">
-            {availableSubjects.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                onClick={async () => {
-                  try {
-                    await addCs.mutateAsync({ subject_id: s.id });
-                    toast.success(`${s.name} added`);
-                    setAddOpen(false);
-                  } catch (err) {
-                    toast.error(getApiError(err));
-                  }
-                }}
-                className="flex w-full items-center justify-between gap-2 rounded-lg border border-gray-200 px-3 py-2 text-left text-sm hover:border-[var(--brand)] hover:bg-[var(--brand)]/5 dark:border-gray-700"
-              >
-                <span className="text-gray-900 dark:text-white">{s.name}</span>
-                <span className="flex items-center gap-2 text-xs text-gray-400">
-                  {s.code && <span className="font-mono">{s.code}</span>}
-                  <Badge variant={s.category === "core" ? "green" : "blue"}>
-                    {capitalize(s.category)}
-                  </Badge>
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-        <div className="mt-4 flex justify-end border-t border-gray-100 pt-3 dark:border-gray-800">
-          <Button type="button" variant="secondary" onClick={() => setAddOpen(false)}>Close</Button>
-        </div>
-      </Modal>
+      <AddSubjectsModal
+        open={addOpen}
+        className={class_.name}
+        available={availableSubjects}
+        onClose={() => setAddOpen(false)}
+        onAdd={async (subjectIds) => {
+          let added = 0;
+          const failures: string[] = [];
+          for (const id of subjectIds) {
+            try {
+              await addCs.mutateAsync({ subject_id: id });
+              added++;
+            } catch (err) {
+              const subj = availableSubjects.find((s) => s.id === id);
+              failures.push(`${subj?.name ?? id}: ${getApiError(err)}`);
+            }
+          }
+          if (added > 0) toast.success(`${added} subject${added !== 1 ? "s" : ""} added`);
+          failures.forEach((f) => toast.error(f));
+          if (failures.length === 0) setAddOpen(false);
+        }}
+      />
 
       {/* Remove confirmation */}
       <Modal open={!!removeTarget} onClose={() => setRemoveTarget(null)} title="Remove Subject?" size="sm">
