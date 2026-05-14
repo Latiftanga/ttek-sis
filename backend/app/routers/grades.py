@@ -1193,7 +1193,7 @@ def _get_scale_name(class_: Class) -> str:
         return "WASSCE"
     if class_.level_group == "basic" and class_.level_number in [7, 8, 9]:
         return "BECE"
-    if class_.level_group in ("kg", "nursery", "creche"):
+    if class_.level_group in ("preschool", "kg"):
         return "KG / Nursery"
     return "Primary GES"
 

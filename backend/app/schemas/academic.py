@@ -103,11 +103,10 @@ class TermResponse(BaseModel):
 VALID_STREAMS = {"A", "B", "C", "D", "E"}
 
 VALID_LEVELS = {
-    "creche":  [],
-    "nursery": [1, 2],
-    "kg":      [1, 2],
-    "basic":   [1, 2, 3, 4, 5, 6, 7, 8, 9],
-    "shs":     [1, 2, 3],
+    "preschool": [0, 1, 2],   # 0 = Creche, 1 = Nursery 1, 2 = Nursery 2
+    "kg":        [1, 2],
+    "basic":     [1, 2, 3, 4, 5, 6, 7, 8, 9],
+    "shs":       [1, 2, 3],
 }
 
 
@@ -141,17 +140,13 @@ class ClassCreate(BaseModel):
         ln = self.level_number
         prog = self.programme
 
-        if lg == "creche":
-            if ln is not None:
-                raise ValueError("Creche cannot have a level number")
-        else:
-            if ln is None:
-                raise ValueError(f"{lg.upper()} must have a level number")
-            valid = VALID_LEVELS[lg]
-            if ln not in valid:
-                raise ValueError(
-                    f"Invalid level number {ln} for {lg.upper()}. Must be one of: {valid}"
-                )
+        if ln is None:
+            raise ValueError(f"{lg.upper()} must have a level number")
+        valid = VALID_LEVELS[lg]
+        if ln not in valid:
+            raise ValueError(
+                f"Invalid level number {ln} for {lg.upper()}. Must be one of: {valid}"
+            )
 
         if lg == "shs" and not prog:
             raise ValueError("SHS classes must have a programme")

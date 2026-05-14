@@ -15,19 +15,28 @@ import { getApiError } from "@/lib/utils";
 // ── Constants ─────────────────────────────────────────────────────────────
 
 const LEVEL_GROUP_LABELS: Record<string, string> = {
-  creche: "Creche", nursery: "Nursery", kg: "KG", basic: "Basic", shs: "SHS",
+  preschool: "Pre-School", kg: "KG", basic: "Basic", shs: "SHS",
 };
 
 const SCHOOL_TYPE_GROUPS: Record<string, string[]> = {
-  basic:    ["creche", "nursery", "kg", "basic"],
-  shs:      ["shs"],
-  combined: ["creche", "nursery", "kg", "basic", "shs"],
+  basic: ["preschool", "kg", "basic"],
+  shs:   ["shs"],
 };
 
 const LEVEL_NUMBERS: Record<string, number[]> = {
-  creche: [], nursery: [1, 2], kg: [1, 2],
-  basic: [1, 2, 3, 4, 5, 6, 7, 8, 9], shs: [1, 2, 3],
+  preschool: [0, 1, 2],   // 0 = Creche, 1 = Nursery 1, 2 = Nursery 2
+  kg:        [1, 2],
+  basic:     [1, 2, 3, 4, 5, 6, 7, 8, 9],
+  shs:       [1, 2, 3],
 };
+
+// Pretty label for a level number inside a group (used in dropdowns + preview).
+function levelNumberLabel(group: string, n: number): string {
+  if (group === "preschool") {
+    return n === 0 ? "Creche" : `Nursery ${n}`;
+  }
+  return String(n);
+}
 
 
 // ── Name preview (mirrors backend Class.generate_name) ────────────────────
@@ -39,8 +48,13 @@ function previewName(
   programme: string | null,
 ): string {
   const label = LEVEL_GROUP_LABELS[levelGroup] ?? levelGroup.toUpperCase();
-  if (levelGroup === "creche") return stream ? `${label} ${stream}` : label;
-  if (!levelNumber) return label;
+  if (levelNumber === null) return label;
+
+  // Pre-School: 0 = Creche, 1+ = Nursery N
+  if (levelGroup === "preschool") {
+    if (levelNumber === 0) return stream ? `Creche ${stream}` : "Creche";
+    return stream ? `Nursery ${levelNumber}${stream}` : `Nursery ${levelNumber}`;
+  }
 
   // SHS: "{level_number}{short_name} {stream}" e.g. "1SC A"
   if (levelGroup === "shs") {
@@ -65,7 +79,7 @@ const createSchema = z.object({
   class_teacher_id: z.string().nullable(),
   capacity:         z.number().min(1).max(500),
 }).superRefine((v, ctx) => {
-  if (v.level_group !== "creche" && !v.level_number) {
+  if (v.level_number === null) {
     ctx.addIssue({ code: "custom", path: ["level_number"], message: "Level number is required" });
   }
   if (v.level_group === "shs" && !v.programme) {
@@ -144,7 +158,6 @@ export default function ClassForm({ class_, onSuccess, onCancel }: ClassFormProp
 
   const availableLevels = LEVEL_NUMBERS[levelGroup] ?? [];
   const isSHS           = levelGroup === "shs";
-  const isCreche        = levelGroup === "creche";
   const preview         = previewName(levelGroup, levelNumber, stream, programme);
 
   // ── Edit form ────────────────────────────────────────────────────────────
@@ -167,7 +180,7 @@ export default function ClassForm({ class_, onSuccess, onCancel }: ClassFormProp
   async function onCreateSubmit(values: CreateValues) {
     const body = {
       level_group:      values.level_group,
-      level_number:     isCreche ? undefined : values.level_number,
+      level_number:     values.level_number ?? undefined,
       stream:           values.stream || undefined,
       programme:        isSHS ? values.programme : undefined,
       class_teacher_id: values.class_teacher_id || undefined,
@@ -272,19 +285,19 @@ export default function ClassForm({ class_, onSuccess, onCancel }: ClassFormProp
       )}
 
       {/* Level number */}
-      {!isCreche && (
-        <Select
-          id="level_number"
-          label={`${LEVEL_GROUP_LABELS[levelGroup] ?? "Level"} Level *`}
-          error={createErrors.level_number?.message}
-          {...regCreate("level_number", { setValueAs: (v) => v ? Number(v) : null })}
-        >
-          <option value="">— Select level —</option>
-          {availableLevels.map((n) => (
-            <option key={n} value={n}>{n}</option>
-          ))}
-        </Select>
-      )}
+      <Select
+        id="level_number"
+        label={`${LEVEL_GROUP_LABELS[levelGroup] ?? "Level"} Level *`}
+        error={createErrors.level_number?.message}
+        {...regCreate("level_number", {
+          setValueAs: (v) => (v === "" || v === null || v === undefined ? null : Number(v)),
+        })}
+      >
+        <option value="">— Select level —</option>
+        {availableLevels.map((n) => (
+          <option key={n} value={n}>{levelNumberLabel(levelGroup, n)}</option>
+        ))}
+      </Select>
 
       {/* Programme — SHS only, hidden for basic schools entirely */}
       {canHaveSHS && isSHS && (

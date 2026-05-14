@@ -112,13 +112,15 @@ async def seed_grading_scales(db: AsyncSession) -> None:
 
 GES_PROGRAMMES = [
     # (name, short_name, description, order)
-    ("General Science",  "SC",    "Physics, Chemistry, Biology, Elective Mathematics",                1),
-    ("General Arts",     "ART",   "Literature, History, Government, Economics",                       2),
-    ("Business",         "BUS",   "Financial Accounting, Business Management, Cost Accounting, Economics", 3),
-    ("Home Economics",   "HEC",   "Food & Nutrition, Clothing & Textiles, Management in Living",      4),
-    ("Visual Arts",      "VA",    "Graphic Design, Sculpture, Ceramics, Picture Making",              5),
-    ("Technical",        "TECH",  "Technical Drawing, Auto Mechanics, Building Construction",         6),
-    ("Agriculture",      "AGRIC", "Crop Science, Animal Science, Agribusiness, Farm Management",      7),
+    ("Agriculture",        "AGR", "Crop Science, Animal Science, Agribusiness, Farm Management",          1),
+    ("General Arts",       "GAR", "Literature-in-English, Government, History, Economics, Geography",    2),
+    ("Science",            "SCI", "Biology, Chemistry, Physics, Engineering Science, Elective Maths",    3),
+    ("Business",           "BUS", "Business Management, Accounting, Economics, Elective Mathematics",    4),
+    ("STEM",               "STM", "Integrated Science, Technology, Engineering, and Mathematics",        5),
+    ("Applied Technology", "ATE", "Technical and Vocational Education and Training (TVET)",              6),
+    ("Home Economics",     "HEC", "Food and Nutrition, Management in Living, Clothing and Textiles",     7),
+    ("Art",                "ART", "Art and Design Studio, General Knowledge in Art, Performing Arts",    8),
+    ("Language",           "LNG", "Modern languages — French, Arabic, Latin, Spanish",                   9),
 ]
 
 
@@ -151,59 +153,58 @@ DEFAULT_SUBJECTS = [
     # ── Basic school core subjects (Basic 1-9) ────────────────────
     ("English Language",              "ENG",  "core",     "basic"),
     ("Mathematics",                   "MATH", "core",     "basic"),
-    ("Integrated Science",            "SCI",  "core",     "basic"),
+    ("General Science",               "SCI",  "core",     "basic"),
     ("Social Studies",                "SOC",  "core",     "basic"),
-    ("Religious & Moral Education",   "RME",  "core",     "basic"),
-    ("Creative Arts & Design",        "CAD",  "core",     "basic"),
+    ("Religious and Moral Education", "RME",  "core",     "basic"),
+    ("Career Technology",             "CT",   "core",     "basic"),
+    ("Creative Arts and Design",      "CAD",  "core",     "basic"),
     ("Ghanaian Language",             "GHL",  "core",     "basic"),
     ("French",                        "FRE",  "core",     "basic"),
-    ("ICT / Computing",               "ICT",  "core",     "basic"),
-    ("Physical Education",            "PE",   "core",     "basic"),
-    ("Career Technology",             "CT",   "core",     "basic"),
-    ("History",                       "HIS",  "core",     "basic"),
+    ("Computing",                     "ICT",  "core",     "basic"),
+    ("Physical Education and Health", "PHE",  "core",     "basic"),
 
     # ── SHS core subjects (all programmes) ───────────────────────
     ("English Language",              "ENG",  "core",     "shs"),
-    ("Core Mathematics",              "CMATH","core",     "shs"),
-    ("Integrated Science",            "ISCI", "core",     "shs"),
+    ("Mathematics",                   "MATH", "core",     "shs"),
+    ("General Science",               "SCI",  "core",     "shs"),
     ("Social Studies",                "SOC",  "core",     "shs"),
+    ("Physical Education and Health", "PHE",  "core",     "shs"),
 
     # ── SHS Science electives ─────────────────────────────────────
-    ("Elective Mathematics",          "EMATH","elective", "shs"),
-    ("Physics",                       "PHY",  "elective", "shs"),
-    ("Chemistry",                     "CHEM", "elective", "shs"),
     ("Biology",                       "BIO",  "elective", "shs"),
+    ("Chemistry",                     "CHEM", "elective", "shs"),
+    ("Physics",                       "PHY",  "elective", "shs"),
+    ("Engineering Science",           "ENGS", "elective", "shs"),
 
-    # ── SHS Arts electives ────────────────────────────────────────
-    ("Literature in English",         "LIT",  "elective", "shs"),
+    # ── SHS General Arts electives ────────────────────────────────
+    ("Literature-in-English",         "LIT",  "elective", "shs"),
     ("Government",                    "GOV",  "elective", "shs"),
-    ("Economics",                     "ECO",  "elective", "shs"),
+    ("History",                       "HIS",  "elective", "shs"),
     ("Geography",                     "GEO",  "elective", "shs"),
+    ("Economics",                     "ECO",  "elective", "shs"),
 
     # ── SHS Business electives ────────────────────────────────────
-    ("Financial Accounting",          "FACC", "elective", "shs"),
-    ("Business Management",           "BUS",  "elective", "shs"),
-    ("Cost Accounting",               "CACC", "elective", "shs"),
+    ("Business Management",           "BMT",  "elective", "shs"),
+    ("Accounting",                    "ACC",  "elective", "shs"),
 
     # ── SHS Home Economics electives ─────────────────────────────
-    ("Food & Nutrition",              "FND",  "elective", "shs"),
-    ("Clothing & Textiles",           "CLT",  "elective", "shs"),
+    ("Food and Nutrition",            "FND",  "elective", "shs"),
     ("Management in Living",          "MIL",  "elective", "shs"),
+    ("Clothing and Textiles",         "CLT",  "elective", "shs"),
 
-    # ── SHS Technical electives ───────────────────────────────────
-    ("Technical Drawing",             "TD",   "elective", "shs"),
-    ("Auto Mechanics",                "AUTO", "elective", "shs"),
-    ("Building Construction",         "BC",   "elective", "shs"),
+    # ── SHS Art / Visual Arts electives ───────────────────────────
+    ("Art and Design Studio",         "ADS",  "elective", "shs"),
+    ("General Knowledge in Art",      "GKA",  "elective", "shs"),
+    ("Performing Arts",               "PFA",  "elective", "shs"),
 
-    # ── SHS Visual Arts electives ─────────────────────────────────
-    ("Graphic Design",                "GD",   "elective", "shs"),
-    ("Ceramics",                      "CER",  "elective", "shs"),
-    ("Picture Making",                "PM",   "elective", "shs"),
+    # ── SHS Agriculture elective ──────────────────────────────────
+    ("Agriculture",                   "AGR",  "elective", "shs"),
 
-    # ── SHS Agriculture electives ─────────────────────────────────
-    ("Crop Science",                  "CROP", "elective", "shs"),
-    ("Animal Science",                "ANIM", "elective", "shs"),
-    ("Agribusiness",                  "AGRI", "elective", "shs"),
+    # ── SHS Language electives ────────────────────────────────────
+    ("French",                        "FRE",  "elective", "shs"),
+    ("Arabic",                        "ARB",  "elective", "shs"),
+    ("Latin",                         "LAT",  "elective", "shs"),
+    ("Spanish",                       "SPA",  "elective", "shs"),
 ]
 
 
@@ -296,8 +297,8 @@ async def seed_ges_ranks(db: AsyncSession) -> None:
 # DEMO SCHOOL (development convenience)
 # ══════════════════════════════════════════════════════════════════════════
 
-DEMO_SCHOOL_NAME      = "Demo Basic & SHS School"
-DEMO_SCHOOL_SLUG      = "demo-school"
+DEMO_SCHOOL_NAME      = "Demo Senior High School"
+DEMO_SCHOOL_SLUG      = "demo-shs"
 DEMO_ADMIN_EMAIL      = "admin@demo-school.com"
 DEMO_ADMIN_PASSWORD   = "changeme123"
 
@@ -316,7 +317,7 @@ async def seed_demo_school(db: AsyncSession) -> None:
     school = School(
         name=DEMO_SCHOOL_NAME,
         slug=DEMO_SCHOOL_SLUG,
-        school_type="combined",
+        school_type="shs",
         region="Greater Accra",
         district="Accra Metro",
         subscription="trial",

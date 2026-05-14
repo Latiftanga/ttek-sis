@@ -9,12 +9,13 @@ from app.database import Base
 
 
 # ── Ghana education structure (official GES naming) ───────────────────────
+# Aligned to the CCP curriculum reform (Basic = unified B1–B9).
+# Pre-School: 0 = Creche, 1 = Nursery 1, 2 = Nursery 2
 LEVEL_GROUPS = {
-    "creche":  {"label": "Creche",  "levels": []},
-    "nursery": {"label": "Nursery", "levels": [1, 2]},
-    "kg":      {"label": "KG",      "levels": [1, 2]},
-    "basic":   {"label": "Basic",   "levels": list(range(1, 10))},  # B1-B9
-    "shs":     {"label": "SHS",     "levels": [1, 2, 3]},
+    "preschool": {"label": "Pre-School", "short_name": "PRE", "levels": [0, 1, 2]},
+    "kg":        {"label": "Kindergarten", "short_name": "KG", "levels": [1, 2]},
+    "basic":     {"label": "Basic School", "short_name": "BS", "levels": list(range(1, 10))},
+    "shs":       {"label": "Senior High School", "short_name": "SHS", "levels": [1, 2, 3]},
 }
 
 # Basic 7-9 → BECE grading (CA submitted to WAEC)
@@ -68,14 +69,13 @@ class Class(Base):
                              nullable=False)
 
     level_group      = Column(String(20), nullable=False)
-    # "creche" | "nursery" | "kg" | "basic" | "shs"
+    # "preschool" | "kg" | "basic" | "shs"
 
     level_number     = Column(Integer, nullable=True)
-    # creche  → NULL
-    # nursery → 1, 2
-    # kg      → 1, 2
-    # basic   → 1, 2, 3, 4, 5, 6, 7, 8, 9
-    # shs     → 1, 2, 3
+    # preschool → 0 (Creche), 1 (Nursery 1), 2 (Nursery 2)
+    # kg        → 1, 2
+    # basic     → 1-9
+    # shs       → 1, 2, 3
 
     stream           = Column(String(30), nullable=True)
 
@@ -108,27 +108,26 @@ class Class(Base):
         Generates official GES display name.
 
         Examples:
-          creche,  None, None, None   → "Creche"
-          nursery, 1,    None, None   → "Nursery 1"
-          kg,      2,    "A",  None   → "KG 2A"
-          basic,   4,    "B",  None   → "Basic 4B"
-          shs,     1,    "A",  "SC"   → "1SC A"
-          shs,     2,    "B",  "ART"  → "2ART B"
-          shs,     1,    None, "BUS"  → "1BUS"
+          preschool, 0, None, None   → "Creche"
+          preschool, 0, "A",  None   → "Creche A"
+          preschool, 1, None, None   → "Nursery 1"
+          preschool, 2, "B",  None   → "Nursery 2B"
+          kg,        2, "A",  None   → "KG 2A"
+          basic,     4, "B",  None   → "Basic 4B"
+          shs,       1, "A",  "SC"   → "1SC A"
+          shs,       2, "B",  "ART"  → "2ART B"
+          shs,       1, None, "BUS"  → "1BUS"
         """
-        labels = {
-            "creche":  "Creche",
-            "nursery": "Nursery",
-            "kg":      "KG",
-            "basic":   "Basic",
-        }
+        # Pre-School: 0 = Creche, 1+ = Nursery N
+        if level_group == "preschool":
+            if level_number == 0:
+                return f"Creche {stream}" if stream else "Creche"
+            name = f"Nursery {level_number}"
+            if stream:
+                name = f"{name}{stream}"
+            return name
 
-        # Creche — no number
-        if level_group == "creche":
-            label = labels["creche"]
-            return f"{label} {stream}" if stream else label
-
-        # SHS — format is "{level_number}{short_name} {stream}", e.g. "1SC A"
+        # SHS — format is "{level_number}{programme} {stream}", e.g. "1SC A"
         if level_group == "shs":
             name = f"{level_number}"
             if programme:
@@ -137,7 +136,8 @@ class Class(Base):
                 name = f"{name} {stream}"
             return name
 
-        # Basic / KG / Nursery — "{Label} {level_number}{stream}"
+        # KG / Basic — "{Label} {level_number}{stream}"
+        labels = {"kg": "KG", "basic": "Basic"}
         label = labels.get(level_group, level_group.upper())
         name = f"{label} {level_number}"
         if stream:
@@ -160,7 +160,7 @@ class Class(Base):
     @property
     def applicable_grading_scale_hint(self) -> str:
         """Hints which system grading scale applies to this class."""
-        if self.level_group in ("creche", "nursery", "kg"):
+        if self.level_group in ("preschool", "kg"):
             return "KG / Nursery"
         if self.level_group == "basic":
             if self.level_number and self.level_number in BASIC_BECE_LEVELS:

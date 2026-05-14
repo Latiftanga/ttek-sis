@@ -1,13 +1,15 @@
 from uuid import UUID
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 from pydantic import BaseModel, EmailStr
+
+
+SchoolType = Literal["basic", "shs"]
 
 
 class SchoolBase(BaseModel):
     name: str
-    school_type: str = "basic"
-    # "basic" | "shs" | "combined"
+    school_type: SchoolType = "basic"
     region: Optional[str] = None
     district: Optional[str] = None
     address: Optional[str] = None
@@ -19,12 +21,12 @@ class SchoolBase(BaseModel):
 
 class SchoolCreate(SchoolBase):
     name: str
-    school_type: str
+    school_type: SchoolType
 
 
 class SchoolUpdate(BaseModel):
     name: Optional[str] = None
-    school_type: Optional[str] = None
+    school_type: Optional[SchoolType] = None
     region: Optional[str] = None
     district: Optional[str] = None
     address: Optional[str] = None

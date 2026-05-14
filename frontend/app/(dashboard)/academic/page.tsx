@@ -46,9 +46,9 @@ type TabKey = (typeof TABS)[number]["key"];
 
 // ── Level group display order + labels ────────────────────────────────────
 
-const LEVEL_ORDER = ["creche", "nursery", "kg", "basic", "shs"];
+const LEVEL_ORDER = ["preschool", "kg", "basic", "shs"];
 const LEVEL_LABELS: Record<string, string> = {
-  creche: "Creche", nursery: "Nursery", kg: "KG", basic: "Basic", shs: "SHS",
+  preschool: "Pre-School", kg: "KG", basic: "Basic", shs: "SHS",
 };
 
 // ── Year form schema ──────────────────────────────────────────────────────
@@ -531,9 +531,8 @@ function ClassesSection({ isAdmin, schoolType }: { isAdmin: boolean; schoolType:
 
   // Group by level_group, filtered by what's valid for this school type
   const SCHOOL_LEVEL_GROUPS: Record<string, string[]> = {
-    basic: ["creche", "nursery", "kg", "basic"],
-    shs: ["shs"],
-    combined: ["creche", "nursery", "kg", "basic", "shs"],
+    basic: ["preschool", "kg", "basic"],
+    shs:   ["shs"],
   };
   const validGroups = SCHOOL_LEVEL_GROUPS[schoolType] ?? ["basic"];
   const grouped = validGroups.reduce<Record<string, Class[]>>((acc, g) => {

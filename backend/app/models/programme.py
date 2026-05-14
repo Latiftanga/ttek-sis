@@ -28,7 +28,7 @@ class SchoolProgramme(Base):
     Created from SystemProgramme suggestions on registration
     or built from scratch by the school admin.
 
-    Only applies to SHS and combined schools.
+    Only applies to SHS schools.
     Used when creating SHS classes.
     """
     __tablename__ = "school_programmes"

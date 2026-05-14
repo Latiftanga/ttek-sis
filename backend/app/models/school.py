@@ -12,7 +12,7 @@ class School(Base):
     name         = Column(String(200), nullable=False)
     slug         = Column(String(60), unique=True, nullable=False)
     school_type  = Column(String(20), nullable=False, default="basic")
-    # "basic" | "shs" | "combined"
+    # "basic" | "shs" — hybrid schools register as two separate schools
 
     region       = Column(String(100))
     district     = Column(String(100))
@@ -60,27 +60,25 @@ class School(Base):
     @property
     def available_level_groups(self) -> list[str]:
         mapping = {
-            "basic":    ["creche", "nursery", "kg", "basic"],
-            "shs":      ["shs"],
-            "combined": ["creche", "nursery", "kg", "basic", "shs"],
+            "basic": ["preschool", "kg", "basic"],
+            "shs":   ["shs"],
         }
         return mapping.get(self.school_type, ["basic"])
 
     @property
     def is_basic(self) -> bool:
-        return self.school_type in ("basic", "combined")
+        return self.school_type == "basic"
 
     @property
     def is_shs(self) -> bool:
-        return self.school_type in ("shs", "combined")
+        return self.school_type == "shs"
 
     @property
     def student_portal_config(self) -> dict:
         """
         Default portal access:
-          basic school    → B7-B9 on, everything else off
-          shs school      → SHS on
-          combined        → B7-B9 + SHS on
+          basic school → B7-B9 on, KG / B1-B6 off
+          shs school   → SHS on
         """
         defaults = {
             "basic_7_9": self.is_basic,
@@ -99,10 +97,10 @@ class School(Base):
         """
         Check if student portal is enabled for a class level.
 
-          basic + level 7-9 → checks basic_7_9
-          basic + level 1-6 → checks basic_1_6
-          shs               → checks shs
-          kg/nursery/creche → always False
+          basic + level 7-9    → checks basic_7_9
+          basic + level 1-6    → checks basic_1_6
+          shs                  → checks shs
+          preschool / kg       → always False
         """
         config = self.student_portal_config
         if level_group == "basic":
