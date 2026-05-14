@@ -278,8 +278,23 @@ class ClassSubjectResponse(BaseModel):
     teacher_id: Optional[UUID] = None
     teacher_name: Optional[str] = None
     order: int
+    enrolled_count: Optional[int] = None  # elective subjects only
 
     model_config = {"from_attributes": True}
+
+
+class SubjectEnrollmentStatus(BaseModel):
+    enrollment_id: UUID
+    student_id: UUID
+    student_number: str
+    first_name: str
+    middle_name: Optional[str] = None
+    last_name: str
+    is_enrolled: bool
+
+
+class SubjectEnrollmentBulkSet(BaseModel):
+    enrollment_ids: List[UUID]
 
 
 class BulkPromoteRequest(BaseModel):

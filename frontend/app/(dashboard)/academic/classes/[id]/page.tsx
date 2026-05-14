@@ -27,6 +27,7 @@ import {
   useGraduateStudent, useUnenrollStudent, useBulkPromote,
   useClassSubjects, useAddClassSubject, useUpdateClassSubject, useRemoveClassSubject,
   useStudentSubjects, useSetStudentSubjects,
+  useSubjectEnrollments, useSetSubjectEnrollments,
   type AcademicYear, type Class, type ClassStudent, type ClassSubjectRow,
 } from "@/lib/hooks/useAcademic";
 import { useStaff } from "@/lib/hooks/useStaff";
@@ -889,6 +890,136 @@ function ElectivesDrawer({
   );
 }
 
+// ── Subject electives drawer — manage who takes an elective subject ───────
+
+function SubjectElectivesDrawer({
+  cs,
+  classId,
+  onClose,
+}: {
+  cs: ClassSubjectRow;
+  classId: string;
+  onClose: () => void;
+}) {
+  const { data: students = [], isLoading } = useSubjectEnrollments(classId, cs.subject_id);
+  const setEnrollments = useSetSubjectEnrollments(classId, cs.subject_id);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const hasInit = useRef(false);
+
+  useEffect(() => {
+    if (students.length > 0 && !hasInit.current) {
+      setSelected(new Set(students.filter((s) => s.is_enrolled).map((s) => s.enrollment_id)));
+      hasInit.current = true;
+    }
+  }, [students]);
+
+  function toggle(enrollmentId: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(enrollmentId) ? next.delete(enrollmentId) : next.add(enrollmentId);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    if (selected.size === students.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(students.map((s) => s.enrollment_id)));
+    }
+  }
+
+  async function handleSave() {
+    try {
+      await setEnrollments.mutateAsync(Array.from(selected));
+      toast.success(`${cs.subject_name} enrolment updated`);
+      onClose();
+    } catch (err) {
+      toast.error(getApiError(err));
+    }
+  }
+
+  const allSelected = students.length > 0 && selected.size === students.length;
+
+  return (
+    <Drawer
+      open
+      onClose={onClose}
+      title={`${cs.subject_name} — Student Enrolment`}
+      width="md"
+    >
+      <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
+        Select the students who take this elective. Changes replace the current enrolment list.
+      </p>
+
+      {isLoading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="h-11 animate-pulse rounded-lg bg-gray-100 dark:bg-gray-800" />
+          ))}
+        </div>
+      ) : students.length === 0 ? (
+        <p className="py-6 text-center text-sm text-gray-400">No students enrolled in this class.</p>
+      ) : (
+        <>
+          <label className="mb-2 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={toggleAll}
+              className="h-4 w-4 rounded accent-[var(--brand)]"
+            />
+            {allSelected ? "Deselect all" : `Select all (${students.length})`}
+          </label>
+          <div className="space-y-1.5">
+            {students.map((s) => {
+              const checked = selected.has(s.enrollment_id);
+              return (
+                <label
+                  key={s.enrollment_id}
+                  className={`flex w-full cursor-pointer items-center gap-3 rounded-lg border px-4 py-2.5 text-sm transition-colors ${
+                    checked
+                      ? "border-[var(--brand)] bg-[var(--brand)]/5"
+                      : "border-gray-200 hover:border-gray-300 dark:border-gray-700"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggle(s.enrollment_id)}
+                    className="h-4 w-4 rounded accent-[var(--brand)]"
+                  />
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--brand)]/10 text-xs font-semibold text-[var(--brand)]">
+                    {s.first_name[0]}{s.last_name[0]}
+                  </div>
+                  <span className="flex-1 min-w-0">
+                    <span className="block truncate font-medium text-gray-900 dark:text-white">
+                      {s.first_name}{s.middle_name ? ` ${s.middle_name}` : ""} {s.last_name}
+                    </span>
+                    <span className="text-xs text-gray-400">#{s.student_number}</span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      <div className="mt-6 flex justify-end gap-3 border-t border-gray-100 pt-4 dark:border-gray-800">
+        <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
+        <Button
+          type="button"
+          loading={setEnrollments.isPending}
+          disabled={students.length === 0}
+          onClick={handleSave}
+        >
+          Save ({selected.size} of {students.length})
+        </Button>
+      </div>
+    </Drawer>
+  );
+}
+
 // ── Subjects tab — class curriculum + per-subject teacher assignment ─────
 
 function SubjectsTab({ class_, isAdmin }: { class_: Class; isAdmin: boolean }) {
@@ -902,6 +1033,9 @@ function SubjectsTab({ class_, isAdmin }: { class_: Class; isAdmin: boolean }) {
   const [addOpen, setAddOpen] = useState(false);
   const [editingCsId, setEditingCsId] = useState<string | null>(null);
   const [removeTarget, setRemoveTarget] = useState<ClassSubjectRow | null>(null);
+  const [electiveTarget, setElectiveTarget] = useState<ClassSubjectRow | null>(null);
+
+  const isSHS = class_.level_group === "shs";
 
   // School is single-level, so just exclude already-added.
   const assignedIds = new Set(classSubjects.map((cs) => cs.subject_id));
@@ -1001,6 +1135,15 @@ function SubjectsTab({ class_, isAdmin }: { class_: Class; isAdmin: boolean }) {
                     )}
                   </div>
                 </div>
+                {isSHS && cs.subject_category === "elective" && (
+                  <button
+                    onClick={() => setElectiveTarget(cs)}
+                    className="shrink-0 rounded-full border border-gray-200 px-2.5 py-0.5 text-xs text-gray-500 hover:border-[var(--brand)] hover:text-[var(--brand)] dark:border-gray-700 dark:text-gray-400"
+                    title="Manage student enrolment for this elective"
+                  >
+                    {cs.enrolled_count ?? 0} student{cs.enrolled_count !== 1 ? "s" : ""}
+                  </button>
+                )}
                 {isAdmin && (
                   <button
                     onClick={() => setRemoveTarget(cs)}
@@ -1051,6 +1194,15 @@ function SubjectsTab({ class_, isAdmin }: { class_: Class; isAdmin: boolean }) {
           <Button type="button" variant="danger" onClick={handleRemove}>Remove</Button>
         </div>
       </Modal>
+
+      {/* Subject-centric elective enrolment drawer */}
+      {electiveTarget && (
+        <SubjectElectivesDrawer
+          cs={electiveTarget}
+          classId={class_.id}
+          onClose={() => setElectiveTarget(null)}
+        />
+      )}
     </div>
   );
 }

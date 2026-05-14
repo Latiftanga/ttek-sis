@@ -237,6 +237,11 @@ export const academicApi = {
     api.get(`/enrollments/${enrollmentId}/subjects`).then((r) => r.data),
   setStudentSubjects: (enrollmentId: string, subjectIds: string[]) =>
     api.post(`/enrollments/${enrollmentId}/subjects/bulk`, { subject_ids: subjectIds }).then((r) => r.data),
+  // Subject-centric elective enrollment
+  listSubjectEnrollments: (classId: string, subjectId: string) =>
+    api.get(`/classes/${classId}/subjects/${subjectId}/enrollments`).then((r) => r.data),
+  setSubjectEnrollments: (classId: string, subjectId: string, enrollmentIds: string[]) =>
+    api.post(`/classes/${classId}/subjects/${subjectId}/enrollments/bulk`, { enrollment_ids: enrollmentIds }).then((r) => r.data),
   // Class subjects (curriculum + teacher per class)
   listClassSubjects: (classId: string) =>
     api.get(`/classes/${classId}/subjects`).then((r) => r.data),

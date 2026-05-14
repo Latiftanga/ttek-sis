@@ -415,6 +415,40 @@ export function useSetStudentSubjects(enrollmentId: string) {
   });
 }
 
+// ── Subject-centric elective enrollment ───────────────────────────────────
+
+export interface SubjectEnrollmentStatus {
+  enrollment_id: string;
+  student_id: string;
+  student_number: string;
+  first_name: string;
+  middle_name: string | null;
+  last_name: string;
+  is_enrolled: boolean;
+}
+
+export function useSubjectEnrollments(classId: string, subjectId: string | null) {
+  const slug = useSlug();
+  return useQuery<SubjectEnrollmentStatus[]>({
+    queryKey: [slug, "subject-enrollments", classId, subjectId],
+    queryFn: () => academicApi.listSubjectEnrollments(classId, subjectId!),
+    enabled: !!slug && !!classId && !!subjectId,
+  });
+}
+
+export function useSetSubjectEnrollments(classId: string, subjectId: string) {
+  const qc = useQueryClient();
+  const slug = useSlug();
+  return useMutation({
+    mutationFn: (enrollmentIds: string[]) =>
+      academicApi.setSubjectEnrollments(classId, subjectId, enrollmentIds),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [slug, "subject-enrollments", classId, subjectId] });
+      qc.invalidateQueries({ queryKey: [slug, "class-subjects", classId] });
+    },
+  });
+}
+
 // ── Class subjects (curriculum + teacher assignment) ──────────────────────
 
 export interface ClassSubjectRow {
@@ -427,6 +461,7 @@ export interface ClassSubjectRow {
   teacher_id: string | null;
   teacher_name: string | null;
   order: number;
+  enrolled_count: number | null;
 }
 
 export function useClassSubjects(classId: string | null) {

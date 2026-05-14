@@ -28,6 +28,7 @@ from app.schemas.academic import (
     ClassStudentResponse,
     ClassSubjectCreate, ClassSubjectUpdate, ClassSubjectResponse,
     StudentSubjectResponse, StudentSubjectBulkSet,
+    SubjectEnrollmentStatus, SubjectEnrollmentBulkSet,
 )
 
 # Convenience alias — write endpoints in this router are restricted to admins.
@@ -372,7 +373,9 @@ async def get_class_students(
 # CLASS SUBJECTS (curriculum + teacher assignment per class)
 # ══════════════════════════════════════════════════════════════════════════
 
-def _to_class_subject_response(cs: ClassSubject) -> ClassSubjectResponse:
+def _to_class_subject_response(
+    cs: ClassSubject, enrolled_count: int | None = None
+) -> ClassSubjectResponse:
     teacher_name = None
     if cs.teacher:
         teacher_name = f"{cs.teacher.first_name} {cs.teacher.last_name}"
@@ -386,6 +389,7 @@ def _to_class_subject_response(cs: ClassSubject) -> ClassSubjectResponse:
         teacher_id=cs.teacher_id,
         teacher_name=teacher_name,
         order=cs.order,
+        enrolled_count=enrolled_count,
     )
 
 
@@ -393,6 +397,8 @@ def _to_class_subject_response(cs: ClassSubject) -> ClassSubjectResponse:
 async def list_class_subjects(
     class_id: UUID, user: CurrentUser, school: CurrentSchool, db: DB,
 ):
+    from app.models.student_subject import StudentSubject
+
     await _get_class(class_id, school.id, db)
     result = await db.execute(
         select(ClassSubject)
@@ -400,7 +406,38 @@ async def list_class_subjects(
         .where(ClassSubject.class_id == class_id)
         .order_by(ClassSubject.order, ClassSubject.created_at)
     )
-    return [_to_class_subject_response(cs) for cs in result.scalars().all()]
+    class_subjects = result.scalars().all()
+
+    # Count enrolled students per elective subject via a single aggregate query
+    year_res = await db.execute(
+        select(AcademicYear).where(
+            AcademicYear.school_id == school.id,
+            AcademicYear.is_current == True,
+        )
+    )
+    year = year_res.scalar_one_or_none()
+
+    counts: dict = {}
+    if year:
+        counts_res = await db.execute(
+            select(StudentSubject.subject_id, func.count(StudentSubject.id))
+            .join(Enrollment, Enrollment.id == StudentSubject.enrollment_id)
+            .where(
+                Enrollment.class_id == class_id,
+                Enrollment.academic_year_id == year.id,
+                Enrollment.status == "active",
+            )
+            .group_by(StudentSubject.subject_id)
+        )
+        counts = {row[0]: row[1] for row in counts_res.all()}
+
+    return [
+        _to_class_subject_response(
+            cs,
+            enrolled_count=counts.get(cs.subject_id) if cs.subject and cs.subject.category == "elective" else None,
+        )
+        for cs in class_subjects
+    ]
 
 
 @router.post("/classes/{class_id}/subjects", response_model=ClassSubjectResponse, status_code=201)
@@ -637,6 +674,193 @@ async def set_student_subjects(
             subject_code=r.subject.code,
         )
         for r in rows
+    ]
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# SUBJECT-CENTRIC ELECTIVE ENROLLMENT  (who takes this elective?)
+# ══════════════════════════════════════════════════════════════════════════
+
+@router.get(
+    "/classes/{class_id}/subjects/{subject_id}/enrollments",
+    response_model=List[SubjectEnrollmentStatus],
+)
+async def list_subject_enrollments(
+    class_id: UUID, subject_id: UUID,
+    _: CurrentUser, school: CurrentSchool, db: DB,
+):
+    """
+    Return every student enrolled in this class with an is_enrolled flag
+    indicating whether they have selected this elective subject.
+    """
+    from app.models.student_subject import StudentSubject
+
+    # Validate subject belongs to class and is elective
+    cs_res = await db.execute(
+        select(ClassSubject)
+        .options(selectinload(ClassSubject.subject))
+        .where(
+            ClassSubject.class_id == class_id,
+            ClassSubject.subject_id == subject_id,
+            ClassSubject.school_id == school.id,
+        )
+    )
+    cs = cs_res.scalar_one_or_none()
+    if not cs:
+        raise HTTPException(404, "Subject not found in this class")
+    if not cs.subject or cs.subject.category != "elective":
+        raise HTTPException(400, "Subject is not an elective")
+
+    year_res = await db.execute(
+        select(AcademicYear).where(
+            AcademicYear.school_id == school.id,
+            AcademicYear.is_current == True,
+        )
+    )
+    year = year_res.scalar_one_or_none()
+    if not year:
+        raise HTTPException(404, "No current academic year")
+
+    # All active enrollments for this class
+    enrollments_res = await db.execute(
+        select(Enrollment)
+        .options(selectinload(Enrollment.student))
+        .where(
+            Enrollment.class_id == class_id,
+            Enrollment.academic_year_id == year.id,
+            Enrollment.status == "active",
+            Enrollment.school_id == school.id,
+        )
+        .order_by(Enrollment.student_id)
+    )
+    enrollments = enrollments_res.scalars().all()
+
+    # Which enrollments have selected this subject
+    selected_res = await db.execute(
+        select(StudentSubject.enrollment_id).where(
+            StudentSubject.subject_id == subject_id,
+            StudentSubject.enrollment_id.in_([e.id for e in enrollments]),
+        )
+    )
+    selected_ids = {row[0] for row in selected_res.all()}
+
+    return [
+        SubjectEnrollmentStatus(
+            enrollment_id=e.id,
+            student_id=e.student.id,
+            student_number=e.student.student_number,
+            first_name=e.student.first_name,
+            middle_name=e.student.middle_name,
+            last_name=e.student.last_name,
+            is_enrolled=e.id in selected_ids,
+        )
+        for e in enrollments
+        if e.student
+    ]
+
+
+@router.post(
+    "/classes/{class_id}/subjects/{subject_id}/enrollments/bulk",
+    response_model=List[SubjectEnrollmentStatus],
+)
+async def set_subject_enrollments(
+    class_id: UUID, subject_id: UUID,
+    body: SubjectEnrollmentBulkSet,
+    _: WriteRole, school: CurrentSchool, db: DB,
+):
+    """
+    Replace which students take this elective. Accepts a list of enrollment_ids.
+    Only enrollment_ids that belong to this class are accepted.
+    """
+    from app.models.student_subject import StudentSubject
+
+    # Validate subject is elective and in this class
+    cs_res = await db.execute(
+        select(ClassSubject)
+        .options(selectinload(ClassSubject.subject))
+        .where(
+            ClassSubject.class_id == class_id,
+            ClassSubject.subject_id == subject_id,
+            ClassSubject.school_id == school.id,
+        )
+    )
+    cs = cs_res.scalar_one_or_none()
+    if not cs:
+        raise HTTPException(404, "Subject not found in this class")
+    if not cs.subject or cs.subject.category != "elective":
+        raise HTTPException(400, "Subject is not an elective")
+
+    year_res = await db.execute(
+        select(AcademicYear).where(
+            AcademicYear.school_id == school.id,
+            AcademicYear.is_current == True,
+        )
+    )
+    year = year_res.scalar_one_or_none()
+    if not year:
+        raise HTTPException(404, "No current academic year")
+
+    # Validate provided enrollment_ids belong to this class
+    valid_res = await db.execute(
+        select(Enrollment)
+        .options(selectinload(Enrollment.student))
+        .where(
+            Enrollment.id.in_(body.enrollment_ids),
+            Enrollment.class_id == class_id,
+            Enrollment.academic_year_id == year.id,
+            Enrollment.status == "active",
+            Enrollment.school_id == school.id,
+        )
+    )
+    valid_enrollments = valid_res.scalars().all()
+    valid_enrollment_ids = {e.id for e in valid_enrollments}
+
+    # All class enrollments for the response
+    all_res = await db.execute(
+        select(Enrollment)
+        .options(selectinload(Enrollment.student))
+        .where(
+            Enrollment.class_id == class_id,
+            Enrollment.academic_year_id == year.id,
+            Enrollment.status == "active",
+            Enrollment.school_id == school.id,
+        )
+        .order_by(Enrollment.student_id)
+    )
+    all_enrollments = all_res.scalars().all()
+    all_enrollment_ids = [e.id for e in all_enrollments]
+
+    # Replace: delete all existing for this subject+class, then insert new
+    await db.execute(
+        sql_delete(StudentSubject).where(
+            StudentSubject.subject_id == subject_id,
+            StudentSubject.enrollment_id.in_(all_enrollment_ids),
+        )
+    )
+
+    new_rows = [
+        StudentSubject(
+            school_id=school.id,
+            enrollment_id=eid,
+            subject_id=subject_id,
+        )
+        for eid in valid_enrollment_ids
+    ]
+    db.add_all(new_rows)
+    await db.flush()
+
+    return [
+        SubjectEnrollmentStatus(
+            enrollment_id=e.id,
+            student_id=e.student.id,
+            student_number=e.student.student_number,
+            first_name=e.student.first_name,
+            middle_name=e.student.middle_name,
+            last_name=e.student.last_name,
+            is_enrolled=e.id in valid_enrollment_ids,
+        )
+        for e in all_enrollments
+        if e.student
     ]
 
 
