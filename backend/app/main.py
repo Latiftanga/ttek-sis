@@ -18,7 +18,7 @@ from app.seeds import (
     seed_grading_scales,
     seed_system_programmes,
     seed_ges_ranks,
-    seed_demo_school,
+    seed_demo_schools,
 )
 
 
@@ -29,7 +29,8 @@ async def lifespan(app: FastAPI):
         await seed_grading_scales(db)
         await seed_system_programmes(db)
         await seed_ges_ranks(db)
-        await seed_demo_school(db)
+        if settings.SEED_DEMO:
+            await seed_demo_schools(db)
         yield
 
 

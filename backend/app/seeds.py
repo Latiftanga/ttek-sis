@@ -343,30 +343,37 @@ async def seed_ges_ranks(db: AsyncSession) -> None:
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# DEMO SCHOOL (development convenience)
+# DEMO SCHOOLS (showcase convenience — enabled via SEED_DEMO=true)
 # ══════════════════════════════════════════════════════════════════════════
 
-DEMO_SCHOOL_NAME      = "Demo Senior High School"
-DEMO_SCHOOL_SLUG      = "demo-shs"
-DEMO_ADMIN_EMAIL      = "admin@demo-school.com"
-DEMO_ADMIN_PASSWORD   = "changeme123"
+DEMO_SCHOOLS = [
+    {
+        "name":     "Demo Senior High School",
+        "slug":     "demo-shs",
+        "type":     "shs",
+        "email":    "admin@demo-shs.com",
+        "password": "demo-shs-2024",
+    },
+    {
+        "name":     "Demo Basic School",
+        "slug":     "demo-basic",
+        "type":     "basic",
+        "email":    "admin@demo-basic.com",
+        "password": "demo-basic-2024",
+    },
+]
 
 
-async def seed_demo_school(db: AsyncSession) -> None:
-    """
-    Idempotent — only runs when zero schools exist.
-    Creates a demo school + school_admin user so you can log in immediately.
-    """
-    school_count = await db.execute(select(func.count(School.id)))
-    if (school_count.scalar() or 0) > 0:
+async def _create_demo_school(db: AsyncSession, cfg: dict, pwd: PasswordHash) -> None:
+    """Create one demo school + admin user if the slug doesn't exist yet."""
+    existing = await db.execute(select(School).where(School.slug == cfg["slug"]))
+    if existing.scalar_one_or_none():
         return
 
-    pwd = PasswordHash((Argon2Hasher(),))
-
     school = School(
-        name=DEMO_SCHOOL_NAME,
-        slug=DEMO_SCHOOL_SLUG,
-        school_type="shs",
+        name=cfg["name"],
+        slug=cfg["slug"],
+        school_type=cfg["type"],
         region="Greater Accra",
         district="Accra Metro",
         subscription="trial",
@@ -385,19 +392,23 @@ async def seed_demo_school(db: AsyncSession) -> None:
 
     db.add(User(
         school_id=school.id,
-        email=DEMO_ADMIN_EMAIL,
-        password_hash=pwd.hash(DEMO_ADMIN_PASSWORD),
+        email=cfg["email"],
+        password_hash=pwd.hash(cfg["password"]),
         role="school_admin",
         staff_id=staff.id,
     ))
 
-    # SHS schools start with the GES standard programmes pre-populated.
-    if school.school_type == "shs":
+    if cfg["type"] == "shs":
         await copy_system_programmes_to_school(db, school.id)
 
-    # Every school gets its default subject catalogue.
-    await copy_default_subjects_to_school(db, school.id, school.school_type)
+    await copy_default_subjects_to_school(db, school.id, cfg["type"])
 
+
+async def seed_demo_schools(db: AsyncSession) -> None:
+    """Idempotent — creates demo SHS + Basic schools (keyed by slug)."""
+    pwd = PasswordHash((Argon2Hasher(),))
+    for cfg in DEMO_SCHOOLS:
+        await _create_demo_school(db, cfg, pwd)
     await db.commit()
 
 
