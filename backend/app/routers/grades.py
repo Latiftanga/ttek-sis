@@ -355,11 +355,16 @@ async def get_gradebook(
     if not year:
         raise HTTPException(404, "No current academic year set")
 
-    # Get enrolled students for this class who were present during this term.
-    # Filtering by start_date <= term.end_date excludes students who joined
-    # after the term ended (e.g. a mid-year joiner in Term 2 won't appear
-    # in the Term 1 gradebook).
-    enrollments_res = await db.execute(
+    # Determine if this is an elective subject so we can filter to only
+    # students who selected it.
+    subject_res = await db.execute(
+        select(Subject).where(Subject.id == assessment.subject_id)
+    )
+    subject = subject_res.scalar_one_or_none()
+    is_elective = subject and subject.category == "elective"
+
+    # Base enrollment query: only students present during this term.
+    enrollment_q = (
         select(Enrollment)
         .options(selectinload(Enrollment.student))
         .where(
@@ -371,6 +376,15 @@ async def get_gradebook(
         )
         .order_by(Enrollment.student_id)
     )
+    if is_elective:
+        from app.models.student_subject import StudentSubject
+        enrollment_q = enrollment_q.join(
+            StudentSubject,
+            (StudentSubject.enrollment_id == Enrollment.id)
+            & (StudentSubject.subject_id == assessment.subject_id),
+        )
+
+    enrollments_res = await db.execute(enrollment_q)
     enrollments = enrollments_res.scalars().all()
 
     # Get existing scores for this assessment
@@ -757,8 +771,9 @@ async def compute_term_results(
     if not subject_ids:
         raise HTTPException(404, "No assessments found for this class and term")
 
-    # Get enrolled students
+    # Get all enrolled students for this class + term (core subject cohort)
     from app.models.academic import AcademicYear
+    from app.models.student_subject import StudentSubject
     year_res = await db.execute(
         select(AcademicYear).where(
             AcademicYear.school_id == school.id,
@@ -778,7 +793,9 @@ async def compute_term_results(
             Enrollment.start_date <= term.end_date,
         )
     )
-    student_ids = [e.student_id for e in enrollments_res.scalars().all()]
+    all_enrollments = enrollments_res.scalars().all()
+    all_student_ids = [e.student_id for e in all_enrollments]
+    enrollment_by_student = {e.student_id: e.id for e in all_enrollments}
 
     # Get assessment categories for weight lookup
     categories_res = await db.execute(
@@ -792,6 +809,33 @@ async def compute_term_results(
     computed_count = 0
 
     for subject_id in subject_ids:
+        # Determine which students take this subject.
+        # For electives, only students who explicitly selected it.
+        subject_res = await db.execute(
+            select(Subject).where(Subject.id == subject_id)
+        )
+        subject = subject_res.scalar_one_or_none()
+
+        if subject and subject.category == "elective":
+            elective_res = await db.execute(
+                select(StudentSubject.enrollment_id).where(
+                    StudentSubject.subject_id == subject_id,
+                    StudentSubject.enrollment_id.in_(
+                        list(enrollment_by_student.values())
+                    ),
+                )
+            )
+            enrolled_enrollment_ids = {r[0] for r in elective_res.all()}
+            student_ids = [
+                sid for sid, eid in enrollment_by_student.items()
+                if eid in enrolled_enrollment_ids
+            ]
+        else:
+            student_ids = all_student_ids
+
+        if not student_ids:
+            continue
+
         # Get all assessments for this subject + class + term
         assessments_res = await db.execute(
             select(Assessment).where(

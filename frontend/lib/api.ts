@@ -232,6 +232,11 @@ export const academicApi = {
     api.delete(`/enrollments/${enrollmentId}`),
   bulkPromote: (body: unknown) =>
     api.post("/enrollments/bulk-promote", body).then((r) => r.data),
+  // Student elective subject selections
+  listStudentSubjects: (enrollmentId: string) =>
+    api.get(`/enrollments/${enrollmentId}/subjects`).then((r) => r.data),
+  setStudentSubjects: (enrollmentId: string, subjectIds: string[]) =>
+    api.post(`/enrollments/${enrollmentId}/subjects/bulk`, { subject_ids: subjectIds }).then((r) => r.data),
   // Class subjects (curriculum + teacher per class)
   listClassSubjects: (classId: string) =>
     api.get(`/classes/${classId}/subjects`).then((r) => r.data),

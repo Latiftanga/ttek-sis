@@ -323,3 +323,17 @@ class ClassStudentResponse(BaseModel):
     gender: Optional[str] = None
     is_boarding: bool
 
+
+class StudentSubjectResponse(BaseModel):
+    id: UUID
+    enrollment_id: UUID
+    subject_id: UUID
+    subject_name: str
+    subject_code: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class StudentSubjectBulkSet(BaseModel):
+    subject_ids: List[UUID]
+

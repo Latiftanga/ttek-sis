@@ -20,3 +20,4 @@ from app.models.school_period import SchoolPeriod
 from app.models.attendance import AttendanceSession, AttendanceRecord
 from app.models.programme import SystemProgramme, SchoolProgramme
 from app.models.class_subject import ClassSubject
+from app.models.student_subject import StudentSubject

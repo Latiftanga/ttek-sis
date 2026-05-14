@@ -385,6 +385,36 @@ export function useUnenrollStudent() {
   });
 }
 
+// ── Student elective subject selections ───────────────────────────────────
+
+export interface StudentSubjectRow {
+  id: string;
+  enrollment_id: string;
+  subject_id: string;
+  subject_name: string;
+  subject_code: string | null;
+}
+
+export function useStudentSubjects(enrollmentId: string | null) {
+  const slug = useSlug();
+  return useQuery<StudentSubjectRow[]>({
+    queryKey: [slug, "student-subjects", enrollmentId],
+    queryFn: () => academicApi.listStudentSubjects(enrollmentId!),
+    enabled: !!slug && !!enrollmentId,
+  });
+}
+
+export function useSetStudentSubjects(enrollmentId: string) {
+  const qc = useQueryClient();
+  const slug = useSlug();
+  return useMutation({
+    mutationFn: (subjectIds: string[]) =>
+      academicApi.setStudentSubjects(enrollmentId, subjectIds),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: [slug, "student-subjects", enrollmentId] }),
+  });
+}
+
 // ── Class subjects (curriculum + teacher assignment) ──────────────────────
 
 export interface ClassSubjectRow {

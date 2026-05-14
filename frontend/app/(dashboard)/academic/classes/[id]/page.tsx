@@ -26,6 +26,7 @@ import {
   usePromoteStudent, useDemoteStudent, useRepeatStudent, useTransferStudent,
   useGraduateStudent, useUnenrollStudent, useBulkPromote,
   useClassSubjects, useAddClassSubject, useUpdateClassSubject, useRemoveClassSubject,
+  useStudentSubjects, useSetStudentSubjects,
   type AcademicYear, type Class, type ClassStudent, type ClassSubjectRow,
 } from "@/lib/hooks/useAcademic";
 import { useStaff } from "@/lib/hooks/useStaff";
@@ -448,12 +449,14 @@ function StudentsTab({
   onEnroll:      () => void;
   onBulkPromote: () => void;
 }) {
+  const isSHS = class_.level_group === "shs";
   const { data: years = [] }         = useAcademicYears();
   const currentYear                  = years.find((y) => y.is_current);
   const [yearId, setYearId]          = useState<string>("");
   const [menuOpen, setMenuOpen]      = useState<string | null>(null);
   const [menuPos, setMenuPos]        = useState({ top: 0, right: 0 });
   const menuRef                      = useRef<HTMLDivElement>(null);
+  const [electivesStudent, setElectivesStudent] = useState<ClassStudent | null>(null);
 
   useEffect(() => {
     if (currentYear && !yearId) setYearId(currentYear.id);
@@ -619,6 +622,14 @@ function StudentsTab({
                 <GraduationCap className="h-4 w-4 text-purple-500" />Graduate
               </button>
             )}
+            {isSHS && (
+              <button
+                onClick={() => { setElectivesStudent(activeStudent); setMenuOpen(null); }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"
+              >
+                <BookMarked className="h-4 w-4 text-indigo-500" />Electives
+              </button>
+            )}
             <div className="my-1 border-t border-gray-100 dark:border-gray-800" />
             <button
               onClick={() => { onAction(activeStudent, "unenroll"); setMenuOpen(null); }}
@@ -629,6 +640,16 @@ function StudentsTab({
           </div>
         );
       })()}
+
+      {/* Electives drawer */}
+      {electivesStudent && (
+        <ElectivesDrawer
+          student={electivesStudent}
+          enrollmentId={electivesStudent.enrollment_id}
+          classId={class_.id}
+          onClose={() => setElectivesStudent(null)}
+        />
+      )}
     </div>
   );
 }
@@ -754,6 +775,115 @@ function AddSubjectsModal({
   );
 }
 
+
+// ── Electives drawer — per-student elective subject selection ────────────
+
+function ElectivesDrawer({
+  student,
+  enrollmentId,
+  classId,
+  onClose,
+}: {
+  student: ClassStudent;
+  enrollmentId: string;
+  classId: string;
+  onClose: () => void;
+}) {
+  const { data: classSubjects = [] } = useClassSubjects(classId);
+  const { data: current = [], isLoading } = useStudentSubjects(enrollmentId);
+  const setSubjects = useSetStudentSubjects(enrollmentId);
+
+  const electives = classSubjects.filter((cs) => cs.subject_category === "elective");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    setSelected(new Set(current.map((r) => r.subject_id)));
+  }, [current]);
+
+  function toggle(subjectId: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(subjectId) ? next.delete(subjectId) : next.add(subjectId);
+      return next;
+    });
+  }
+
+  async function handleSave() {
+    try {
+      await setSubjects.mutateAsync(Array.from(selected));
+      toast.success("Elective subjects updated");
+      onClose();
+    } catch (err) {
+      toast.error(getApiError(err));
+    }
+  }
+
+  return (
+    <Drawer
+      open
+      onClose={onClose}
+      title={`Electives — ${student.first_name} ${student.last_name}`}
+      width="md"
+    >
+      <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
+        Select the elective subjects this student is taking. Core subjects apply automatically.
+      </p>
+
+      {isLoading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="h-10 animate-pulse rounded-lg bg-gray-100 dark:bg-gray-800" />
+          ))}
+        </div>
+      ) : electives.length === 0 ? (
+        <p className="py-6 text-center text-sm text-gray-400">
+          No elective subjects have been added to this class yet.
+        </p>
+      ) : (
+        <div className="space-y-1.5">
+          {electives.map((cs) => {
+            const checked = selected.has(cs.subject_id);
+            return (
+              <label
+                key={cs.subject_id}
+                className={`flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg border px-4 py-3 text-sm transition-colors ${
+                  checked
+                    ? "border-[var(--brand)] bg-[var(--brand)]/5"
+                    : "border-gray-200 hover:border-gray-300 dark:border-gray-700"
+                }`}
+              >
+                <span className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggle(cs.subject_id)}
+                    className="h-4 w-4 rounded accent-[var(--brand)]"
+                  />
+                  <span className="font-medium text-gray-900 dark:text-white">{cs.subject_name}</span>
+                </span>
+                {cs.subject_code && (
+                  <span className="font-mono text-xs text-gray-400">{cs.subject_code}</span>
+                )}
+              </label>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="mt-6 flex justify-end gap-3 border-t border-gray-100 pt-4 dark:border-gray-800">
+        <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
+        <Button
+          type="button"
+          loading={setSubjects.isPending}
+          disabled={electives.length === 0}
+          onClick={handleSave}
+        >
+          Save ({selected.size} selected)
+        </Button>
+      </div>
+    </Drawer>
+  );
+}
 
 // ── Subjects tab — class curriculum + per-subject teacher assignment ─────
 

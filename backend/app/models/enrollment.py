@@ -61,8 +61,10 @@ class Enrollment(Base):
                              onupdate=func.now())
 
     # Relationships
-    student      = relationship("Student", back_populates="enrollments")
-    class_       = relationship("Class", back_populates="enrollments")
-    academic_year = relationship("AcademicYear")
-    promoted_to  = relationship("Enrollment", remote_side="Enrollment.id",
-                               foreign_keys=[promoted_to_id])
+    student         = relationship("Student", back_populates="enrollments")
+    class_          = relationship("Class", back_populates="enrollments")
+    academic_year   = relationship("AcademicYear")
+    promoted_to     = relationship("Enrollment", remote_side="Enrollment.id",
+                                  foreign_keys=[promoted_to_id])
+    student_subjects = relationship("StudentSubject", back_populates="enrollment",
+                                   cascade="all, delete-orphan")

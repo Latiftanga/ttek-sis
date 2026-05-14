@@ -27,6 +27,7 @@ from app.schemas.academic import (
     BulkPromoteRequest, BulkPromoteResponse,
     ClassStudentResponse,
     ClassSubjectCreate, ClassSubjectUpdate, ClassSubjectResponse,
+    StudentSubjectResponse, StudentSubjectBulkSet,
 )
 
 # Convenience alias — write endpoints in this router are restricted to admins.
@@ -506,6 +507,138 @@ async def remove_class_subject(
         raise HTTPException(404, "Class subject not found")
     await db.delete(cs)
     await db.commit()
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# STUDENT ELECTIVE SUBJECT SELECTIONS
+# ══════════════════════════════════════════════════════════════════════════
+
+@router.get(
+    "/enrollments/{enrollment_id}/subjects",
+    response_model=List[StudentSubjectResponse],
+)
+async def list_student_subjects(
+    enrollment_id: UUID, school: CurrentSchool, db: DB, _: CurrentUser,
+):
+    """Return the elective subjects a student has selected for this enrollment."""
+    from app.models.student_subject import StudentSubject
+
+    enrollment_res = await db.execute(
+        select(Enrollment).where(
+            Enrollment.id == enrollment_id,
+            Enrollment.school_id == school.id,
+        )
+    )
+    if not enrollment_res.scalar_one_or_none():
+        raise HTTPException(404, "Enrollment not found")
+
+    result = await db.execute(
+        select(StudentSubject)
+        .options(selectinload(StudentSubject.subject))
+        .where(
+            StudentSubject.enrollment_id == enrollment_id,
+            StudentSubject.school_id == school.id,
+        )
+    )
+    rows = result.scalars().all()
+    return [
+        StudentSubjectResponse(
+            id=r.id,
+            enrollment_id=r.enrollment_id,
+            subject_id=r.subject_id,
+            subject_name=r.subject.name,
+            subject_code=r.subject.code,
+        )
+        for r in rows
+    ]
+
+
+@router.post(
+    "/enrollments/{enrollment_id}/subjects/bulk",
+    response_model=List[StudentSubjectResponse],
+)
+async def set_student_subjects(
+    enrollment_id: UUID,
+    body: StudentSubjectBulkSet,
+    _: WriteRole,
+    school: CurrentSchool,
+    db: DB,
+):
+    """
+    Replace this student's elective subject selections.
+    Only subjects marked category='elective' that belong to the class are accepted.
+    Subjects not in the class curriculum are silently skipped.
+    """
+    from app.models.student_subject import StudentSubject
+
+    enrollment_res = await db.execute(
+        select(Enrollment).where(
+            Enrollment.id == enrollment_id,
+            Enrollment.school_id == school.id,
+        )
+    )
+    enrollment = enrollment_res.scalar_one_or_none()
+    if not enrollment:
+        raise HTTPException(404, "Enrollment not found")
+
+    # Resolve which requested subjects are valid electives in this class
+    valid_res = await db.execute(
+        select(ClassSubject)
+        .options(selectinload(ClassSubject.subject))
+        .where(
+            ClassSubject.class_id == enrollment.class_id,
+            ClassSubject.school_id == school.id,
+            ClassSubject.subject_id.in_(body.subject_ids),
+        )
+    )
+    valid_class_subjects = [
+        cs for cs in valid_res.scalars().all()
+        if cs.subject and cs.subject.category == "elective"
+    ]
+    valid_subject_ids = {cs.subject_id for cs in valid_class_subjects}
+
+    # Delete all existing selections, then insert the new set
+    existing_res = await db.execute(
+        select(StudentSubject).where(
+            StudentSubject.enrollment_id == enrollment_id,
+            StudentSubject.school_id == school.id,
+        )
+    )
+    for row in existing_res.scalars().all():
+        await db.delete(row)
+
+    new_rows = [
+        StudentSubject(
+            school_id=school.id,
+            enrollment_id=enrollment_id,
+            subject_id=sid,
+        )
+        for sid in valid_subject_ids
+    ]
+    db.add_all(new_rows)
+    await db.flush()
+
+    # Reload with subject names
+    result = await db.execute(
+        select(StudentSubject)
+        .options(selectinload(StudentSubject.subject))
+        .where(
+            StudentSubject.enrollment_id == enrollment_id,
+            StudentSubject.school_id == school.id,
+        )
+    )
+    rows = result.scalars().all()
+    await db.commit()
+    return [
+        StudentSubjectResponse(
+            id=r.id,
+            enrollment_id=r.enrollment_id,
+            subject_id=r.subject_id,
+            subject_name=r.subject.name,
+            subject_code=r.subject.code,
+        )
+        for r in rows
+    ]
 
 
 # ══════════════════════════════════════════════════════════════════════════
