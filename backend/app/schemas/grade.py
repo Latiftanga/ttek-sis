@@ -241,6 +241,11 @@ class ComputeTermResultsRequest(BaseModel):
     # None = compute all subjects for this class + term
 
 
+class LockTermResultsRequest(BaseModel):
+    class_id: UUID
+    term_id:  UUID
+
+
 class TermResultResponse(BaseModel):
     id:          UUID
     school_id:   UUID

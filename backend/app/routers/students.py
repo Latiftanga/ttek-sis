@@ -42,7 +42,7 @@ async def list_students(
     search: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
-    limit: int = Query(50, le=5000),
+    limit: int = Query(50, le=500),
 ):
     query = select(Student).options(selectinload(Student.contacts)).where(Student.school_id == school.id)
 
@@ -210,7 +210,7 @@ async def add_contact(
         existing = await db.execute(
             select(StudentContact).where(
                 StudentContact.student_id == student_id,
-                StudentContact.is_primary_contact == True,
+                StudentContact.is_primary_contact.is_(True),
             )
         )
         for c in existing.scalars().all():
@@ -248,7 +248,7 @@ async def download_template(
     classes_result = await db.execute(
         select(ClassModel).where(
             ClassModel.school_id == school.id,
-            ClassModel.is_active == True,
+            ClassModel.is_active.is_(True),
         ).order_by(ClassModel.level_group, ClassModel.level_number, ClassModel.stream)
     )
     classes = classes_result.scalars().all()
@@ -256,7 +256,7 @@ async def download_template(
     houses_result = await db.execute(
         select(SchoolHouse).where(
             SchoolHouse.school_id == school.id,
-            SchoolHouse.is_active == True,
+            SchoolHouse.is_active.is_(True),
         ).order_by(SchoolHouse.order)
     )
     houses = houses_result.scalars().all()
@@ -264,7 +264,7 @@ async def download_template(
     year_result = await db.execute(
         select(AcademicYear).where(
             AcademicYear.school_id == school.id,
-            AcademicYear.is_current == True,
+            AcademicYear.is_current.is_(True),
         )
     )
     current_year = year_result.scalar_one_or_none()
@@ -467,7 +467,7 @@ async def bulk_upload_students(
     academic_year_id: Optional[UUID] = None,
     start_date: Optional[date_type] = None,
 ):
-    if not file.filename.endswith((".xlsx", ".xls")):
+    if not file.filename or not file.filename.endswith((".xlsx", ".xls")):
         raise HTTPException(400, "File must be an Excel file (.xlsx or .xls)")
 
     contents = await file.read()
@@ -693,7 +693,7 @@ async def enable_student_portal(
     year_res = await db.execute(
         select(AcademicYear).where(
             AcademicYear.school_id == school.id,
-            AcademicYear.is_current == True,
+            AcademicYear.is_current.is_(True),
         )
     )
     year = year_res.scalar_one_or_none()
@@ -816,7 +816,7 @@ async def bulk_enable_portal(
     year_res = await db.execute(
         select(AcademicYear).where(
             AcademicYear.school_id == school.id,
-            AcademicYear.is_current == True,
+            AcademicYear.is_current.is_(True),
         )
     )
     year = year_res.scalar_one_or_none()

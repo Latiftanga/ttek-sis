@@ -5,7 +5,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 
 from app.dependencies import CurrentUser, CurrentSchool, DB
@@ -14,16 +14,17 @@ from app.models.assessment import (
     AssessmentCategory, Assessment,
     AssessmentScore, TermResult, ScoreEditLog,
 )
-from app.models.academic import Class, Subject, Term
+from app.models.academic import AcademicYear, Class, Subject, Term
 from app.models.student import Student
 from app.models.enrollment import Enrollment
+from app.models.student_subject import StudentSubject
 from app.schemas.grade import (
     AssessmentCategoryCreate, AssessmentCategoryUpdate, AssessmentCategoryResponse,
     AssessmentCreate, AssessmentUpdate, AssessmentResponse,
     BulkScoreSubmit, ScoreEditRequest,
     AssessmentScoreResponse, GradebookEntry, GradebookResponse,
     ScoreEditLogResponse,
-    ComputeTermResultsRequest, TermResultResponse, StudentTermReport,
+    ComputeTermResultsRequest, LockTermResultsRequest, TermResultResponse, StudentTermReport,
     GradingScaleCreate, GradingBandCreate, GradingScaleResponse,
 )
 
@@ -45,7 +46,7 @@ async def list_grading_scales(
         .options(selectinload(GradingScale.bands))
         .where(
             (GradingScale.school_id == school.id) |
-            (GradingScale.school_id == None)
+            (GradingScale.school_id.is_(None))
         )
         .order_by(GradingScale.school_id.nulls_first(), GradingScale.name)
     )
@@ -112,7 +113,7 @@ async def list_categories(user: CurrentUser, school: CurrentSchool, db: DB):
         select(AssessmentCategory)
         .where(
             AssessmentCategory.school_id == school.id,
-            AssessmentCategory.is_active == True,
+            AssessmentCategory.is_active.is_(True),
         )
         .order_by(AssessmentCategory.order)
     )
@@ -128,7 +129,7 @@ async def create_category(
     existing = await db.execute(
         select(func.sum(AssessmentCategory.weight)).where(
             AssessmentCategory.school_id == school.id,
-            AssessmentCategory.is_active == True,
+            AssessmentCategory.is_active.is_(True),
         )
     )
     current_total = existing.scalar() or Decimal("0")
@@ -344,11 +345,10 @@ async def get_gradebook(
     term = await _get_term(assessment.term_id, school.id, db)
 
     # Get current year
-    from app.models.academic import AcademicYear
     year_res = await db.execute(
         select(AcademicYear).where(
             AcademicYear.school_id == school.id,
-            AcademicYear.is_current == True,
+            AcademicYear.is_current.is_(True),
         )
     )
     year = year_res.scalar_one_or_none()
@@ -377,7 +377,6 @@ async def get_gradebook(
         .order_by(Enrollment.student_id)
     )
     if is_elective:
-        from app.models.student_subject import StudentSubject
         enrollment_q = enrollment_q.join(
             StudentSubject,
             (StudentSubject.enrollment_id == Enrollment.id)
@@ -441,16 +440,20 @@ async def submit_scores(
         [r.student_id for r in body.records], school.id, db
     )
 
-    # Offline deduplication
-    if body.client_id:
-        # Check if this batch was already processed
-        # Simple check — if all students already have scores, likely duplicate
-        pass
-
     now = datetime.now(UTC)
     saved = 0
     updated = 0
     errors = []
+
+    # Batch-fetch all existing scores for the submitted students in one query
+    existing_res = await db.execute(
+        select(AssessmentScore).where(
+            AssessmentScore.assessment_id == assessment_id,
+            AssessmentScore.school_id == school.id,
+            AssessmentScore.student_id.in_([r.student_id for r in body.records]),
+        )
+    )
+    existing_map = {s.student_id: s for s in existing_res.scalars().all()}
 
     for record in body.records:
         # Validate score doesn't exceed max
@@ -461,15 +464,7 @@ async def submit_scores(
             })
             continue
 
-        # Check if score already exists
-        existing_res = await db.execute(
-            select(AssessmentScore).where(
-                AssessmentScore.assessment_id == assessment_id,
-                AssessmentScore.student_id == record.student_id,
-                AssessmentScore.school_id == school.id,
-            )
-        )
-        existing = existing_res.scalar_one_or_none()
+        existing = existing_map.get(record.student_id)
 
         if existing:
             # Update existing score with audit trail
@@ -561,7 +556,7 @@ async def edit_score(
             TermResult.subject_id == assessment.subject_id,
             TermResult.class_id   == assessment.class_id,
             TermResult.term_id    == assessment.term_id,
-            TermResult.is_submitted == True,
+            TermResult.is_submitted.is_(True),
         )
     )
     term_locked = term_res.scalar_one_or_none() is not None
@@ -689,7 +684,7 @@ async def suspicious_edits(
               AssessmentScore.assessment_id == Assessment.id)
         .where(
             ScoreEditLog.school_id == school.id,
-            ScoreEditLog.is_after_submission == True,
+            ScoreEditLog.is_after_submission.is_(True),
         )
         .order_by(ScoreEditLog.changed_at.desc())
     )
@@ -758,7 +753,6 @@ async def compute_term_results(
     if body.subject_id:
         subject_ids = [body.subject_id]
     else:
-        # Get all subjects that have assessments for this class + term
         subjects_res = await db.execute(
             select(Assessment.subject_id).distinct().where(
                 Assessment.school_id == school.id,
@@ -771,13 +765,11 @@ async def compute_term_results(
     if not subject_ids:
         raise HTTPException(404, "No assessments found for this class and term")
 
-    # Get all enrolled students for this class + term (core subject cohort)
-    from app.models.academic import AcademicYear
-    from app.models.student_subject import StudentSubject
+    # Get current year and all enrollments
     year_res = await db.execute(
         select(AcademicYear).where(
             AcademicYear.school_id == school.id,
-            AcademicYear.is_current == True,
+            AcademicYear.is_current.is_(True),
         )
     )
     year = year_res.scalar_one_or_none()
@@ -797,32 +789,49 @@ async def compute_term_results(
     all_student_ids = [e.student_id for e in all_enrollments]
     enrollment_by_student = {e.student_id: e.id for e in all_enrollments}
 
-    # Get assessment categories for weight lookup
+    # Assessment categories for weight lookup
     categories_res = await db.execute(
         select(AssessmentCategory).where(
             AssessmentCategory.school_id == school.id,
-            AssessmentCategory.is_active == True,
+            AssessmentCategory.is_active.is_(True),
         )
     )
     categories = {c.id: c for c in categories_res.scalars().all()}
 
+    # Pre-fetch all subjects in one query
+    all_subjects_res = await db.execute(
+        select(Subject).where(Subject.id.in_(subject_ids))
+    )
+    subjects_by_id = {s.id: s for s in all_subjects_res.scalars().all()}
+
+    # Grading scale is class-level — fetch once outside the subject loop
+    class_res = await db.execute(
+        select(Class).where(Class.id == body.class_id)
+    )
+    class_ = class_res.scalar_one_or_none()
+    scale_name = _get_scale_name(class_)
+
+    scale_res = await db.execute(
+        select(GradingScale)
+        .options(selectinload(GradingScale.bands))
+        .where(
+            GradingScale.name == scale_name,
+            GradingScale.school_id.is_(None),
+        )
+    )
+    scale = scale_res.scalar_one_or_none()
+
     computed_count = 0
 
     for subject_id in subject_ids:
-        # Determine which students take this subject.
-        # For electives, only students who explicitly selected it.
-        subject_res = await db.execute(
-            select(Subject).where(Subject.id == subject_id)
-        )
-        subject = subject_res.scalar_one_or_none()
+        subject = subjects_by_id.get(subject_id)
 
+        # For electives, only students who explicitly selected the subject
         if subject and subject.category == "elective":
             elective_res = await db.execute(
                 select(StudentSubject.enrollment_id).where(
                     StudentSubject.subject_id == subject_id,
-                    StudentSubject.enrollment_id.in_(
-                        list(enrollment_by_student.values())
-                    ),
+                    StudentSubject.enrollment_id.in_(list(enrollment_by_student.values())),
                 )
             )
             enrolled_enrollment_ids = {r[0] for r in elective_res.all()}
@@ -849,69 +858,53 @@ async def compute_term_results(
         if not assessments:
             continue
 
-        # Get grading scale for this class
-        # Use BECE for Basic 7-9, WASSCE for SHS, Primary GES for others
-        class_res = await db.execute(
-            select(Class).where(Class.id == body.class_id)
-        )
-        class_ = class_res.scalar_one_or_none()
-        scale_name = _get_scale_name(class_)
-
-        scale_res = await db.execute(
-            select(GradingScale)
-            .options(selectinload(GradingScale.bands))
-            .where(
-                GradingScale.name == scale_name,
-                GradingScale.school_id == None,
+        # Batch-fetch all scores for these assessments + students in one query
+        all_scores_res = await db.execute(
+            select(AssessmentScore).where(
+                AssessmentScore.assessment_id.in_([a.id for a in assessments]),
+                AssessmentScore.student_id.in_(student_ids),
             )
         )
-        scale = scale_res.scalar_one_or_none()
+        scores_map = {
+            (s.student_id, s.assessment_id): s
+            for s in all_scores_res.scalars().all()
+        }
 
-        # Compute per student
-        student_scores = {}  # student_id → raw_score
-
-        for student_id in student_ids:
-            ca_score = await _compute_ca_score(
-                student_id, assessments, categories, db
+        # Batch-fetch existing term results for this subject
+        existing_res = await db.execute(
+            select(TermResult).where(
+                TermResult.school_id  == school.id,
+                TermResult.subject_id == subject_id,
+                TermResult.term_id    == body.term_id,
+                TermResult.class_id   == body.class_id,
             )
-            student_scores[student_id] = ca_score
+        )
+        existing_map = {r.student_id: r for r in existing_res.scalars().all()}
 
-        # Compute positions — rank by score descending
+        # Compute weighted score per student (no DB calls)
+        student_scores = {
+            sid: _compute_ca_score(sid, assessments, categories, scores_map)
+            for sid in student_ids
+        }
+
+        # Rank by score descending
         ranked = sorted(
-            [(sid, score) for sid, score in student_scores.items()
-             if score is not None],
+            [(sid, sc) for sid, sc in student_scores.items() if sc is not None],
             key=lambda x: x[1],
             reverse=True,
         )
-        positions = {}
-        for pos, (sid, _) in enumerate(ranked, 1):
-            positions[sid] = pos
+        positions = {sid: pos for pos, (sid, _) in enumerate(ranked, 1)}
 
-        # Save TermResult per student
+        # Persist TermResult per student
         for student_id in student_ids:
             raw_score = student_scores.get(student_id)
             grade_label, remark = _apply_grading_scale(raw_score, scale)
 
-            # Scaled to 50 for BECE/WASSCE
             ca_score = None
             if raw_score is not None:
-                if scale_name in ("BECE", "WASSCE"):
-                    ca_score = round(raw_score / 2, 2)
-                else:
-                    ca_score = raw_score
+                ca_score = round(raw_score / 2, 2) if scale_name in ("BECE", "WASSCE") else raw_score
 
-            # Check if result already exists
-            existing_res = await db.execute(
-                select(TermResult).where(
-                    TermResult.school_id  == school.id,
-                    TermResult.student_id == student_id,
-                    TermResult.subject_id == subject_id,
-                    TermResult.term_id    == body.term_id,
-                    TermResult.class_id   == body.class_id,
-                )
-            )
-            existing = existing_res.scalar_one_or_none()
-
+            existing = existing_map.get(student_id)
             if existing:
                 if existing.is_submitted:
                     continue  # locked — skip
@@ -996,7 +989,7 @@ async def student_term_report(
         term_res = await db.execute(
             select(Term).where(
                 Term.school_id == school.id,
-                Term.is_current == True,
+                Term.is_current.is_(True),
             )
         )
         term = term_res.scalar_one_or_none()
@@ -1015,11 +1008,10 @@ async def student_term_report(
             raise HTTPException(404, "Term not found")
 
     # Get current enrollment
-    from app.models.academic import AcademicYear
     year_res = await db.execute(
         select(AcademicYear).where(
             AcademicYear.school_id == school.id,
-            AcademicYear.is_current == True,
+            AcademicYear.is_current.is_(True),
         )
     )
     year = year_res.scalar_one_or_none()
@@ -1077,7 +1069,7 @@ async def student_term_report(
 
 @router.post("/term-results/lock")
 async def lock_term_results(
-    class_id: UUID, term_id: UUID,
+    body: LockTermResultsRequest,
     user: CurrentUser, school: CurrentSchool, db: DB,
 ):
     """
@@ -1088,15 +1080,15 @@ async def lock_term_results(
     if user.role not in ("headteacher", "school_admin", "superadmin"):
         raise HTTPException(403, "Only headteacher or admin can lock results")
 
-    await _assert_class_in_school(class_id, school.id, db)
-    await _assert_term_in_school(term_id, school.id, db)
+    await _assert_class_in_school(body.class_id, school.id, db)
+    await _assert_term_in_school(body.term_id, school.id, db)
 
     result = await db.execute(
         select(TermResult).where(
             TermResult.school_id == school.id,
-            TermResult.class_id  == class_id,
-            TermResult.term_id   == term_id,
-            TermResult.is_computed == True,
+            TermResult.class_id  == body.class_id,
+            TermResult.term_id   == body.term_id,
+            TermResult.is_computed.is_(True),
         )
     )
     results = result.scalars().all()
@@ -1146,7 +1138,7 @@ async def _get_category(
         select(AssessmentCategory).where(
             AssessmentCategory.id == category_id,
             AssessmentCategory.school_id == school_id,
-            AssessmentCategory.is_active == True,
+            AssessmentCategory.is_active.is_(True),
         )
     )
     c = result.scalar_one_or_none()
@@ -1257,28 +1249,24 @@ def _get_scale_name(class_: Class) -> str:
     return "Primary GES"
 
 
-async def _compute_ca_score(
+def _compute_ca_score(
     student_id: UUID,
     assessments: list,
     categories: dict,
-    db: AsyncSession,
+    scores_map: dict,
 ) -> Optional[Decimal]:
     """
-    Compute weighted CA score for one student across all assessments.
+    Compute weighted CA score for one student.
+
+    scores_map: pre-fetched {(student_id, assessment_id): AssessmentScore}
 
     BECE/WASSCE logic:
-      Group Exercise: average of all instances × weight
-      Project Work:   average of all instances × weight
-      Class Test:     average of all instances × weight
-      Total = sum of weighted averages = raw_score out of 100
+      Average all instances within each category, then apply that category's weight.
+      Total = sum of weighted category averages (out of 100).
     """
-    # Group assessments by category
-    by_category = {}
+    by_category: dict = {}
     for assessment in assessments:
-        cat_id = assessment.category_id
-        if cat_id not in by_category:
-            by_category[cat_id] = []
-        by_category[cat_id].append(assessment)
+        by_category.setdefault(assessment.category_id, []).append(assessment)
 
     total_weighted = Decimal("0")
     total_weight   = Decimal("0")
@@ -1288,30 +1276,19 @@ async def _compute_ca_score(
         if not category:
             continue
 
-        # Get scores for this student in this category
         scores = []
         for assessment in cat_assessments:
-            score_res = await db.execute(
-                select(AssessmentScore).where(
-                    AssessmentScore.assessment_id == assessment.id,
-                    AssessmentScore.student_id    == student_id,
-                )
-            )
-            score_record = score_res.scalar_one_or_none()
+            score_record = scores_map.get((student_id, assessment.id))
             if score_record and not score_record.is_absent and score_record.score is not None:
-                # Normalize to percentage of max_score
                 pct = (score_record.score / assessment.max_score) * 100
                 scores.append(pct)
 
         if not scores:
             continue
 
-        # Average across all instances in this category
         avg = sum(scores) / len(scores)
-
-        # Apply weight
         weighted = (avg / 100) * category.weight
-        total_weighted += Decimal(str(weighted))
+        total_weighted += weighted  # already Decimal — no str round-trip needed
         total_weight   += category.weight
 
     if total_weight == 0:

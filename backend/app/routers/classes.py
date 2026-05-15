@@ -1,3 +1,4 @@
+import uuid as uuid_lib
 from typing import Annotated, List, Optional
 from uuid import UUID
 
@@ -16,6 +17,7 @@ from app.models.attendance import AttendanceSession, AttendanceRecord
 from app.models.assessment import Assessment, AssessmentScore
 from app.models.class_subject import ClassSubject
 from app.models.staff import Staff
+from app.models.student_subject import StudentSubject
 from app.schemas.academic import (
     AcademicYearCreate, AcademicYearUpdate, AcademicYearResponse,
     TermCreate, TermUpdate, TermResponse,
@@ -397,8 +399,6 @@ def _to_class_subject_response(
 async def list_class_subjects(
     class_id: UUID, user: CurrentUser, school: CurrentSchool, db: DB,
 ):
-    from app.models.student_subject import StudentSubject
-
     await _get_class(class_id, school.id, db)
     result = await db.execute(
         select(ClassSubject)
@@ -412,7 +412,7 @@ async def list_class_subjects(
     year_res = await db.execute(
         select(AcademicYear).where(
             AcademicYear.school_id == school.id,
-            AcademicYear.is_current == True,
+            AcademicYear.is_current.is_(True),
         )
     )
     year = year_res.scalar_one_or_none()
@@ -558,8 +558,6 @@ async def list_student_subjects(
     enrollment_id: UUID, school: CurrentSchool, db: DB, _: CurrentUser,
 ):
     """Return the elective subjects a student has selected for this enrollment."""
-    from app.models.student_subject import StudentSubject
-
     enrollment_res = await db.execute(
         select(Enrollment).where(
             Enrollment.id == enrollment_id,
@@ -606,8 +604,6 @@ async def set_student_subjects(
     Only subjects marked category='elective' that belong to the class are accepted.
     Subjects not in the class curriculum are silently skipped.
     """
-    from app.models.student_subject import StudentSubject
-
     enrollment_res = await db.execute(
         select(Enrollment).where(
             Enrollment.id == enrollment_id,
@@ -693,8 +689,6 @@ async def list_subject_enrollments(
     Return every student enrolled in this class with an is_enrolled flag
     indicating whether they have selected this elective subject.
     """
-    from app.models.student_subject import StudentSubject
-
     # Validate subject belongs to class and is elective
     cs_res = await db.execute(
         select(ClassSubject)
@@ -714,7 +708,7 @@ async def list_subject_enrollments(
     year_res = await db.execute(
         select(AcademicYear).where(
             AcademicYear.school_id == school.id,
-            AcademicYear.is_current == True,
+            AcademicYear.is_current.is_(True),
         )
     )
     year = year_res.scalar_one_or_none()
@@ -772,8 +766,6 @@ async def set_subject_enrollments(
     Replace which students take this elective. Accepts a list of enrollment_ids.
     Only enrollment_ids that belong to this class are accepted.
     """
-    from app.models.student_subject import StudentSubject
-
     # Validate subject is elective and in this class
     cs_res = await db.execute(
         select(ClassSubject)
@@ -793,29 +785,14 @@ async def set_subject_enrollments(
     year_res = await db.execute(
         select(AcademicYear).where(
             AcademicYear.school_id == school.id,
-            AcademicYear.is_current == True,
+            AcademicYear.is_current.is_(True),
         )
     )
     year = year_res.scalar_one_or_none()
     if not year:
         raise HTTPException(404, "No current academic year")
 
-    # Validate provided enrollment_ids belong to this class
-    valid_res = await db.execute(
-        select(Enrollment)
-        .options(selectinload(Enrollment.student))
-        .where(
-            Enrollment.id.in_(body.enrollment_ids),
-            Enrollment.class_id == class_id,
-            Enrollment.academic_year_id == year.id,
-            Enrollment.status == "active",
-            Enrollment.school_id == school.id,
-        )
-    )
-    valid_enrollments = valid_res.scalars().all()
-    valid_enrollment_ids = {e.id for e in valid_enrollments}
-
-    # All class enrollments for the response
+    # Fetch all class enrollments in one query; derive valid set locally
     all_res = await db.execute(
         select(Enrollment)
         .options(selectinload(Enrollment.student))
@@ -829,6 +806,9 @@ async def set_subject_enrollments(
     )
     all_enrollments = all_res.scalars().all()
     all_enrollment_ids = [e.id for e in all_enrollments]
+    all_enrollment_id_set = {e.id for e in all_enrollments}
+    # Only accept requested IDs that actually belong to this class
+    valid_enrollment_ids = {eid for eid in body.enrollment_ids if eid in all_enrollment_id_set}
 
     # Replace: delete all existing for this subject+class, then insert new
     await db.execute(
@@ -1162,17 +1142,17 @@ async def bulk_promote(
         enrollment.status = "promoted"
         enrollment.end_date = body.start_date
 
-        new_enrollment = Enrollment(
+        new_id = uuid_lib.uuid4()
+        db.add(Enrollment(
+            id=new_id,
             school_id=school.id,
             student_id=enrollment.student_id,
             class_id=body.to_class_id,
             academic_year_id=body.academic_year_id,
             start_date=body.start_date,
             status="active",
-        )
-        db.add(new_enrollment)
-        await db.flush()
-        enrollment.promoted_to_id = new_enrollment.id
+        ))
+        enrollment.promoted_to_id = new_id
         promoted += 1
 
     await db.commit()
@@ -1358,21 +1338,17 @@ async def _get_enrollment(
 
 
 async def _unset_current_year(school_id: UUID, db: AsyncSession) -> None:
-    result = await db.execute(
-        select(AcademicYear).where(
-            AcademicYear.school_id == school_id, AcademicYear.is_current.is_(True),
-        )
+    await db.execute(
+        update(AcademicYear)
+        .where(AcademicYear.school_id == school_id, AcademicYear.is_current.is_(True))
+        .values(is_current=False)
     )
-    for year in result.scalars().all():
-        year.is_current = False
 
 
 async def _unset_current_term(school_id: UUID, db: AsyncSession) -> None:
-    result = await db.execute(
-        select(Term).where(
-            Term.school_id == school_id, Term.is_current.is_(True),
-        )
+    await db.execute(
+        update(Term)
+        .where(Term.school_id == school_id, Term.is_current.is_(True))
+        .values(is_current=False)
     )
-    for term in result.scalars().all():
-        term.is_current = False
 

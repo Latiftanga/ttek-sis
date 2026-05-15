@@ -1,6 +1,16 @@
 "use client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { academicApi, schoolApi } from "@/lib/api";
+import {
+  academicApi, schoolApi,
+  AcademicYearCreate, AcademicYearUpdate,
+  TermCreate, TermUpdate,
+  ClassCreate, ClassUpdate,
+  SubjectCreate, SubjectUpdate,
+  EnrollmentCreate,
+  PromoteRequest, RepeatRequest, TransferRequest, GraduateRequest,
+  DemoteRequest, BulkPromoteRequest,
+  ClassSubjectCreate, ClassSubjectUpdate,
+} from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -217,8 +227,9 @@ export function useCreateYear() {
   const qc = useQueryClient();
   const slug = useSlug();
   return useMutation({
-    mutationFn: (body: unknown) => academicApi.createYear(body),
+    mutationFn: (body: AcademicYearCreate) => academicApi.createYear(body),
     onSuccess: () => qc.invalidateQueries({ queryKey: [slug, "academic-years"] }),
+    onError: (err) => console.error("Failed to create academic year", err),
   });
 }
 
@@ -226,8 +237,9 @@ export function useUpdateYear(id: string) {
   const qc = useQueryClient();
   const slug = useSlug();
   return useMutation({
-    mutationFn: (body: unknown) => academicApi.updateYear(id, body),
+    mutationFn: (body: AcademicYearUpdate) => academicApi.updateYear(id, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: [slug, "academic-years"] }),
+    onError: (err) => console.error("Failed to update academic year", err),
   });
 }
 
@@ -246,8 +258,9 @@ export function useCreateTerm(yearId: string) {
   const qc = useQueryClient();
   const slug = useSlug();
   return useMutation({
-    mutationFn: (body: unknown) => academicApi.createTerm(yearId, body),
+    mutationFn: (body: TermCreate) => academicApi.createTerm(yearId, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: [slug, "terms", yearId] }),
+    onError: (err) => console.error("Failed to create term", err),
   });
 }
 
@@ -255,9 +268,10 @@ export function useUpdateTerm(yearId: string) {
   const qc = useQueryClient();
   const slug = useSlug();
   return useMutation({
-    mutationFn: ({ termId, body }: { termId: string; body: unknown }) =>
+    mutationFn: ({ termId, body }: { termId: string; body: TermUpdate }) =>
       academicApi.updateTerm(termId, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: [slug, "terms", yearId] }),
+    onError: (err) => console.error("Failed to update term", err),
   });
 }
 
@@ -279,8 +293,9 @@ export function useCreateClass() {
   const qc = useQueryClient();
   const slug = useSlug();
   return useMutation({
-    mutationFn: (body: unknown) => academicApi.createClass(body),
+    mutationFn: (body: ClassCreate) => academicApi.createClass(body),
     onSuccess: () => qc.invalidateQueries({ queryKey: [slug, "classes"] }),
+    onError: (err) => console.error("Failed to create class", err),
   });
 }
 
@@ -288,11 +303,12 @@ export function useUpdateClass(classId: string) {
   const qc = useQueryClient();
   const slug = useSlug();
   return useMutation({
-    mutationFn: (body: unknown) => academicApi.updateClass(classId, body),
+    mutationFn: (body: ClassUpdate) => academicApi.updateClass(classId, body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: [slug, "classes"] });
       qc.invalidateQueries({ queryKey: [slug, "class", classId] });
     },
+    onError: (err) => console.error("Failed to update class", err),
   });
 }
 
@@ -312,8 +328,9 @@ export function useEnrollStudent() {
   const qc = useQueryClient();
   const slug = useSlug();
   return useMutation({
-    mutationFn: (body: unknown) => academicApi.enroll(body),
+    mutationFn: (body: EnrollmentCreate) => academicApi.enroll(body),
     onSuccess: () => qc.invalidateQueries({ queryKey: [slug, "class-students"] }),
+    onError: (err) => console.error("Failed to enroll student", err),
   });
 }
 
@@ -321,9 +338,10 @@ export function usePromoteStudent() {
   const qc = useQueryClient();
   const slug = useSlug();
   return useMutation({
-    mutationFn: ({ enrollmentId, body }: { enrollmentId: string; body: unknown }) =>
+    mutationFn: ({ enrollmentId, body }: { enrollmentId: string; body: PromoteRequest }) =>
       academicApi.promoteStudent(enrollmentId, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: [slug, "class-students"] }),
+    onError: (err) => console.error("Failed to promote student", err),
   });
 }
 
@@ -331,9 +349,10 @@ export function useRepeatStudent() {
   const qc = useQueryClient();
   const slug = useSlug();
   return useMutation({
-    mutationFn: ({ enrollmentId, body }: { enrollmentId: string; body: unknown }) =>
+    mutationFn: ({ enrollmentId, body }: { enrollmentId: string; body: RepeatRequest }) =>
       academicApi.repeatStudent(enrollmentId, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: [slug, "class-students"] }),
+    onError: (err) => console.error("Failed to mark student as repeat", err),
   });
 }
 
@@ -341,9 +360,10 @@ export function useTransferStudent() {
   const qc = useQueryClient();
   const slug = useSlug();
   return useMutation({
-    mutationFn: ({ enrollmentId, body }: { enrollmentId: string; body: unknown }) =>
+    mutationFn: ({ enrollmentId, body }: { enrollmentId: string; body: TransferRequest }) =>
       academicApi.transferStudent(enrollmentId, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: [slug, "class-students"] }),
+    onError: (err) => console.error("Failed to transfer student", err),
   });
 }
 
@@ -351,9 +371,10 @@ export function useGraduateStudent() {
   const qc = useQueryClient();
   const slug = useSlug();
   return useMutation({
-    mutationFn: ({ enrollmentId, body }: { enrollmentId: string; body: unknown }) =>
+    mutationFn: ({ enrollmentId, body }: { enrollmentId: string; body: GraduateRequest }) =>
       academicApi.graduateStudent(enrollmentId, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: [slug, "class-students"] }),
+    onError: (err) => console.error("Failed to graduate student", err),
   });
 }
 
@@ -361,8 +382,9 @@ export function useBulkPromote() {
   const qc = useQueryClient();
   const slug = useSlug();
   return useMutation({
-    mutationFn: (body: unknown) => academicApi.bulkPromote(body),
+    mutationFn: (body: BulkPromoteRequest) => academicApi.bulkPromote(body),
     onSuccess: () => qc.invalidateQueries({ queryKey: [slug, "class-students"] }),
+    onError: (err) => console.error("Failed to bulk promote", err),
   });
 }
 
@@ -370,9 +392,10 @@ export function useDemoteStudent() {
   const qc = useQueryClient();
   const slug = useSlug();
   return useMutation({
-    mutationFn: ({ enrollmentId, body }: { enrollmentId: string; body: unknown }) =>
+    mutationFn: ({ enrollmentId, body }: { enrollmentId: string; body: DemoteRequest }) =>
       academicApi.demoteStudent(enrollmentId, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: [slug, "class-students"] }),
+    onError: (err) => console.error("Failed to demote student", err),
   });
 }
 
@@ -477,8 +500,9 @@ export function useAddClassSubject(classId: string) {
   const qc = useQueryClient();
   const slug = useSlug();
   return useMutation({
-    mutationFn: (body: unknown) => academicApi.addClassSubject(classId, body),
+    mutationFn: (body: ClassSubjectCreate) => academicApi.addClassSubject(classId, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: [slug, "class-subjects", classId] }),
+    onError: (err) => console.error("Failed to add class subject", err),
   });
 }
 
@@ -486,9 +510,10 @@ export function useUpdateClassSubject(classId: string) {
   const qc = useQueryClient();
   const slug = useSlug();
   return useMutation({
-    mutationFn: ({ csId, body }: { csId: string; body: unknown }) =>
+    mutationFn: ({ csId, body }: { csId: string; body: ClassSubjectUpdate }) =>
       academicApi.updateClassSubject(classId, csId, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: [slug, "class-subjects", classId] }),
+    onError: (err) => console.error("Failed to update class subject", err),
   });
 }
 
@@ -507,8 +532,9 @@ export function useCreateSubject() {
   const qc = useQueryClient();
   const slug = useSlug();
   return useMutation({
-    mutationFn: (body: unknown) => academicApi.createSubject(body),
+    mutationFn: (body: SubjectCreate) => academicApi.createSubject(body),
     onSuccess: () => qc.invalidateQueries({ queryKey: [slug, "subjects"] }),
+    onError: (err) => console.error("Failed to create subject", err),
   });
 }
 
@@ -516,9 +542,10 @@ export function useUpdateSubject() {
   const qc = useQueryClient();
   const slug = useSlug();
   return useMutation({
-    mutationFn: ({ id, body }: { id: string; body: unknown }) =>
+    mutationFn: ({ id, body }: { id: string; body: SubjectUpdate }) =>
       academicApi.updateSubject(id, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: [slug, "subjects"] }),
+    onError: (err) => console.error("Failed to update subject", err),
   });
 }
 

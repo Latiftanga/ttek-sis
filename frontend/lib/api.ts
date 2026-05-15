@@ -177,20 +177,136 @@ export const schoolApi = {
     api.delete(`/school/houses/${id}`),
 };
 
+// ── Academic request body types ─────────────────────────────────────────
+export interface AcademicYearCreate {
+  name: string;
+  start_date: string;
+  end_date: string;
+  is_current?: boolean;
+}
+
+export interface AcademicYearUpdate {
+  name?: string;
+  start_date?: string;
+  end_date?: string;
+  is_current?: boolean;
+}
+
+export interface TermCreate {
+  name: string;
+  start_date: string;
+  end_date: string;
+  is_current?: boolean;
+}
+
+export interface TermUpdate {
+  name?: string;
+  start_date?: string;
+  end_date?: string;
+  is_current?: boolean;
+}
+
+export interface ClassCreate {
+  level_group: string;
+  level_number?: number | null;
+  stream?: string | null;
+  programme?: string | null;
+  class_teacher_id?: string | null;
+  capacity?: number;
+}
+
+export interface ClassUpdate {
+  stream?: string | null;
+  programme?: string | null;
+  class_teacher_id?: string | null;
+  capacity?: number;
+  is_active?: boolean;
+}
+
+export interface SubjectCreate {
+  name: string;
+  code?: string | null;
+  category?: string | null;
+}
+
+export interface SubjectUpdate {
+  name?: string;
+  code?: string | null;
+  category?: string | null;
+}
+
+export interface EnrollmentCreate {
+  student_id: string;
+  class_id: string;
+  academic_year_id: string;
+  start_date: string;
+  is_boarding?: boolean;
+  notes?: string | null;
+}
+
+export interface PromoteRequest {
+  to_class_id: string;
+  academic_year_id: string;
+  start_date: string;
+  notes?: string | null;
+}
+
+export interface RepeatRequest {
+  academic_year_id: string;
+  start_date: string;
+  notes?: string | null;
+}
+
+export interface TransferRequest {
+  end_date: string;
+  notes?: string | null;
+}
+
+export interface GraduateRequest {
+  end_date: string;
+  notes?: string | null;
+}
+
+export interface DemoteRequest {
+  to_class_id: string;
+  academic_year_id: string;
+  start_date: string;
+  notes?: string | null;
+}
+
+export interface BulkPromoteRequest {
+  from_class_id: string;
+  to_class_id: string;
+  academic_year_id: string;
+  start_date: string;
+  exclude_student_ids?: string[];
+}
+
+export interface ClassSubjectCreate {
+  subject_id: string;
+  teacher_id?: string | null;
+  order?: number;
+}
+
+export interface ClassSubjectUpdate {
+  teacher_id?: string | null;
+  order?: number;
+}
+
 // ── Academic ────────────────────────────────────────────────────────────
 export const academicApi = {
   listYears: () => api.get("/academic-years").then((r) => r.data),
-  createYear: (body: unknown) =>
+  createYear: (body: AcademicYearCreate) =>
     api.post("/academic-years", body).then((r) => r.data),
-  updateYear: (id: string, body: unknown) =>
+  updateYear: (id: string, body: AcademicYearUpdate) =>
     api.patch(`/academic-years/${id}`, body).then((r) => r.data),
   setCurrentYear: (id: string) =>
     api.post(`/academic-years/${id}/set-current`).then((r) => r.data),
   listTerms: (yearId: string) =>
     api.get(`/academic-years/${yearId}/terms`).then((r) => r.data),
-  createTerm: (yearId: string, body: unknown) =>
+  createTerm: (yearId: string, body: TermCreate) =>
     api.post(`/academic-years/${yearId}/terms`, body).then((r) => r.data),
-  updateTerm: (termId: string, body: unknown) =>
+  updateTerm: (termId: string, body: TermUpdate) =>
     api.patch(`/terms/${termId}`, body).then((r) => r.data),
   setCurrentTerm: (termId: string) =>
     api.post(`/terms/${termId}/set-current`).then((r) => r.data),
@@ -198,9 +314,9 @@ export const academicApi = {
     api.get("/classes", { params }).then((r) => r.data),
   getClass: (classId: string) =>
     api.get(`/classes/${classId}`).then((r) => r.data),
-  createClass: (body: unknown) =>
+  createClass: (body: ClassCreate) =>
     api.post("/classes", body).then((r) => r.data),
-  updateClass: (classId: string, body: unknown) =>
+  updateClass: (classId: string, body: ClassUpdate) =>
     api.patch(`/classes/${classId}`, body).then((r) => r.data),
   getClassStudents: (classId: string, yearId?: string) =>
     api
@@ -210,27 +326,27 @@ export const academicApi = {
       .then((r) => r.data),
   listSubjects: (params?: Record<string, string>) =>
     api.get("/subjects", { params }).then((r) => r.data),
-  createSubject: (body: unknown) =>
+  createSubject: (body: SubjectCreate) =>
     api.post("/subjects", body).then((r) => r.data),
-  updateSubject: (id: string, body: unknown) =>
+  updateSubject: (id: string, body: SubjectUpdate) =>
     api.patch(`/subjects/${id}`, body).then((r) => r.data),
   deleteSubject: (id: string) => api.delete(`/subjects/${id}`),
   // Enrollment
-  enroll: (body: unknown) =>
+  enroll: (body: EnrollmentCreate) =>
     api.post("/enrollments", body).then((r) => r.data),
-  promoteStudent: (enrollmentId: string, body: unknown) =>
+  promoteStudent: (enrollmentId: string, body: PromoteRequest) =>
     api.patch(`/enrollments/${enrollmentId}/promote`, body).then((r) => r.data),
-  repeatStudent: (enrollmentId: string, body: unknown) =>
+  repeatStudent: (enrollmentId: string, body: RepeatRequest) =>
     api.patch(`/enrollments/${enrollmentId}/repeat`, body).then((r) => r.data),
-  transferStudent: (enrollmentId: string, body: unknown) =>
+  transferStudent: (enrollmentId: string, body: TransferRequest) =>
     api.patch(`/enrollments/${enrollmentId}/transfer`, body).then((r) => r.data),
-  graduateStudent: (enrollmentId: string, body: unknown) =>
+  graduateStudent: (enrollmentId: string, body: GraduateRequest) =>
     api.patch(`/enrollments/${enrollmentId}/graduate`, body).then((r) => r.data),
-  demoteStudent: (enrollmentId: string, body: unknown) =>
+  demoteStudent: (enrollmentId: string, body: DemoteRequest) =>
     api.patch(`/enrollments/${enrollmentId}/demote`, body).then((r) => r.data),
   unenroll: (enrollmentId: string) =>
     api.delete(`/enrollments/${enrollmentId}`),
-  bulkPromote: (body: unknown) =>
+  bulkPromote: (body: BulkPromoteRequest) =>
     api.post("/enrollments/bulk-promote", body).then((r) => r.data),
   // Student elective subject selections
   listStudentSubjects: (enrollmentId: string) =>
@@ -245,9 +361,9 @@ export const academicApi = {
   // Class subjects (curriculum + teacher per class)
   listClassSubjects: (classId: string) =>
     api.get(`/classes/${classId}/subjects`).then((r) => r.data),
-  addClassSubject: (classId: string, body: unknown) =>
+  addClassSubject: (classId: string, body: ClassSubjectCreate) =>
     api.post(`/classes/${classId}/subjects`, body).then((r) => r.data),
-  updateClassSubject: (classId: string, csId: string, body: unknown) =>
+  updateClassSubject: (classId: string, csId: string, body: ClassSubjectUpdate) =>
     api.patch(`/classes/${classId}/subjects/${csId}`, body).then((r) => r.data),
   removeClassSubject: (classId: string, csId: string) =>
     api.delete(`/classes/${classId}/subjects/${csId}`),
