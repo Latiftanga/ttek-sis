@@ -150,7 +150,7 @@ export default function QualificationsCard({ staffId, qualifications, canEdit }:
               <option key={t.value} value={t.value}>{t.label}</option>
             ))}
           </Select>
-          <Input id="notes" label="Notes" placeholder="Optional notes" {...register("notes")} />
+          <Input id="notes" label="Notes" placeholder="e.g. Awarded with distinction" {...register("notes")} />
           <div className="flex justify-end gap-2">
             <Button type="button" variant="secondary" size="sm" onClick={() => { setAdding(false); reset(); }}>
               Cancel

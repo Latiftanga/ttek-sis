@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import Providers from "@/components/Providers";
 import PWARegister from "@/components/layout/PWARegister";
@@ -38,12 +39,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={geist.variable} suppressHydrationWarning data-scroll-behavior="smooth">
-      {/* Inline script prevents flash of wrong theme before React hydrates */}
+      {/* Loads /theme-init.js before hydration to prevent FOUC */}
       <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(function(){try{var ts=localStorage.getItem('ttek-theme');var t=ts?JSON.parse(ts).state?.theme:'system';var d=t==='dark'||(t!=='light'&&window.matchMedia('(prefers-color-scheme: dark)').matches);if(d)document.documentElement.classList.add('dark');var as=localStorage.getItem('ttek-auth');var brand=as?JSON.parse(as).state?.school?.accent_color:null;if(brand)document.documentElement.style.setProperty('--brand',brand);}catch(e){}})();`,
-          }}
+        <Script
+          id="ttek-theme-init"
+          src="/theme-init.js"
+          strategy="beforeInteractive"
         />
       </head>
       <body className="min-h-screen bg-gray-50 font-sans antialiased dark:bg-gray-950 dark:text-gray-100" suppressHydrationWarning>

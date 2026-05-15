@@ -116,7 +116,7 @@ function PromoteModal({
           ))}
         </Select>
         <Input id="promo_start" label="Start Date *" type="date" error={errors.start_date?.message} {...register("start_date")} />
-        <Input id="promo_notes" label="Notes (optional)" {...register("notes")} />
+        <Input id="promo_notes" label="Notes" {...register("notes")} />
         <div className="flex justify-end gap-3 border-t border-gray-100 pt-4 dark:border-gray-800">
           <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
           <Button type="submit" loading={isSubmitting}>Promote</Button>
@@ -169,7 +169,7 @@ function RepeatModal({
           ))}
         </Select>
         <Input id="rep_start" label="Start Date *" type="date" error={errors.start_date?.message} {...register("start_date")} />
-        <Input id="rep_notes" label="Notes (optional)" {...register("notes")} />
+        <Input id="rep_notes" label="Notes" {...register("notes")} />
         <div className="flex justify-end gap-3 border-t border-gray-100 pt-4 dark:border-gray-800">
           <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
           <Button type="submit" loading={isSubmitting}>Confirm Repeat</Button>
@@ -208,8 +208,8 @@ function TransferModal({ student, onClose }: { student: ClassStudent; onClose: (
         </strong> as transferred out of the school.
       </p>
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
-        <Input id="tf_end" label="End Date (optional)" type="date" {...register("end_date")} />
-        <Input id="tf_notes" label="Notes (optional)" {...register("notes")} />
+        <Input id="tf_end" label="End Date" type="date" {...register("end_date")} />
+        <Input id="tf_notes" label="Notes" {...register("notes")} />
         <div className="flex justify-end gap-3 border-t border-gray-100 pt-4 dark:border-gray-800">
           <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
           <Button type="submit" variant="danger" loading={isSubmitting}>Mark Transferred</Button>
@@ -248,8 +248,8 @@ function GraduateModal({ student, onClose }: { student: ClassStudent; onClose: (
         </strong> will be marked as graduated.
       </p>
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
-        <Input id="grad_end" label="Graduation Date (optional)" type="date" {...register("end_date")} />
-        <Input id="grad_notes" label="Notes (optional)" {...register("notes")} />
+        <Input id="grad_end" label="Graduation Date" type="date" {...register("end_date")} />
+        <Input id="grad_notes" label="Notes" {...register("notes")} />
         <div className="flex justify-end gap-3 border-t border-gray-100 pt-4 dark:border-gray-800">
           <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
           <Button type="submit" loading={isSubmitting}>Graduate</Button>
@@ -315,7 +315,7 @@ function DemoteModal({
           ))}
         </Select>
         <Input id="dem_start" label="Start Date *" type="date" error={errors.start_date?.message} {...register("start_date")} />
-        <Input id="dem_notes" label="Reason / notes (optional)" {...register("notes")} />
+        <Input id="dem_notes" label="Reason / notes" {...register("notes")} />
         <div className="flex justify-end gap-3 border-t border-gray-100 pt-4 dark:border-gray-800">
           <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
           <Button type="submit" loading={isSubmitting}>Demote</Button>

@@ -142,7 +142,7 @@ export default function LoginPage() {
                   id="email"
                   label="Email address"
                   type="email"
-                  placeholder="admin@school.edu.gh"
+                  placeholder="you@school.edu.gh"
                   autoComplete="email"
                   error={errors.email?.message}
                   {...register("email")}
@@ -160,6 +160,9 @@ export default function LoginPage() {
                   Sign in
                 </Button>
               </form>
+              <p className="mt-4 text-center text-xs text-gray-500 dark:text-gray-400">
+                Forgot your password? Please contact your school administrator.
+              </p>
             </div>
 
             <p className="mt-6 text-center text-xs text-gray-400 dark:text-gray-600">

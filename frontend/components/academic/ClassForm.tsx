@@ -237,7 +237,7 @@ export default function ClassForm({ class_, onSuccess, onCancel }: ClassFormProp
 
         <Input
           id="edit_capacity"
-          label="Capacity"
+          label="Capacity *"
           type="number"
           min={1}
           max={500}
@@ -274,7 +274,7 @@ export default function ClassForm({ class_, onSuccess, onCancel }: ClassFormProp
       {!isSHSOnly && (
         <Select
           id="level_group"
-          label="Level Group"
+          label="Level Group *"
           error={createErrors.level_group?.message}
           {...regCreate("level_group")}
         >
@@ -319,7 +319,7 @@ export default function ClassForm({ class_, onSuccess, onCancel }: ClassFormProp
       {/* Stream */}
       <Input
         id="stream"
-        label="Stream (optional)"
+        label="Stream"
         placeholder="e.g. A, Red, Green"
         error={createErrors.stream?.message}
         {...regCreate("stream")}
@@ -328,7 +328,7 @@ export default function ClassForm({ class_, onSuccess, onCancel }: ClassFormProp
       {/* Class teacher */}
       <Select
         id="class_teacher_id"
-        label="Class Teacher (optional)"
+        label="Class Teacher"
         error={createErrors.class_teacher_id?.message}
         {...regCreate("class_teacher_id")}
       >
@@ -344,7 +344,7 @@ export default function ClassForm({ class_, onSuccess, onCancel }: ClassFormProp
       {/* Capacity */}
       <Input
         id="capacity"
-        label="Capacity"
+        label="Capacity *"
         type="number"
         min={1}
         max={500}

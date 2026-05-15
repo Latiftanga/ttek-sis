@@ -5,12 +5,11 @@ import { studentsApi, academicApi, attendanceApi } from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
 import { StatCard } from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
-import { formatDate } from "@/lib/utils";
+import { formatDate, ROLES, SCHOOL_TYPES } from "@/lib/utils";
 import {
   Users,
   School,
   CalendarCheck,
-  BookOpen,
   AlertCircle,
   ArrowRight,
 } from "lucide-react";
@@ -26,20 +25,20 @@ const quickActions = [
   {
     href: "/attendance",
     label: "Take attendance",
-    desc: "Record today's sessions",
+    desc: "Today's roll call",
     icon: "✅",
     color: "from-blue-500 to-blue-600",
   },
   {
-    href: "/grades",
-    label: "Enter grades",
-    desc: "Update assessment scores",
-    icon: "📝",
+    href: "/staff",
+    label: "Manage staff",
+    desc: "Teachers & administrators",
+    icon: "👥",
     color: "from-violet-500 to-violet-600",
   },
   {
     href: "/academic",
-    label: "Manage academic",
+    label: "Academic setup",
     desc: "Years, terms & classes",
     icon: "📅",
     color: "from-amber-500 to-amber-600",
@@ -93,8 +92,6 @@ export default function DashboardPage() {
     return "Good evening";
   };
 
-  const firstName = user?.email?.split("@")[0] ?? "";
-
   return (
     <div className="space-y-6 sm:space-y-8">
       {/* Hero greeting */}
@@ -115,7 +112,7 @@ export default function DashboardPage() {
             })}
           </p>
           <h1 className="mt-1 text-2xl font-bold sm:text-3xl">
-            {greeting()}{firstName ? `, ${firstName}` : ""}!
+            {greeting()}!
           </h1>
           <p className="mt-1 text-sm text-emerald-100">
             {school?.name ?? "Your school"} — here&rsquo;s today&rsquo;s snapshot.
@@ -127,7 +124,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
         <StatCard
           label="Active students"
           value={students.length}
@@ -145,12 +142,6 @@ export default function DashboardPage() {
           value={sessionsToday}
           icon={<CalendarCheck className="h-5 w-5" />}
           color="yellow"
-        />
-        <StatCard
-          label="Academic years"
-          value={years.length}
-          icon={<BookOpen className="h-5 w-5" />}
-          color="purple"
         />
       </div>
 
@@ -197,16 +188,18 @@ export default function DashboardPage() {
           <div className="space-y-3">
             <Row label="Name" value={school?.name ?? "—"} />
             <div className="border-t border-gray-50 dark:border-gray-800" />
-            <Row label="Type" value={school?.school_type} />
-            <div className="border-t border-gray-50 dark:border-gray-800" />
             <Row
-              label="Subscription"
-              badge={<Badge variant="green">Trial</Badge>}
+              label="Type"
+              value={
+                school?.school_type
+                  ? SCHOOL_TYPES[school.school_type] ?? school.school_type
+                  : undefined
+              }
             />
             <div className="border-t border-gray-50 dark:border-gray-800" />
             <Row
               label="Your role"
-              value={user?.role?.replace(/_/g, " ") ?? "—"}
+              value={user?.role ? ROLES[user.role] ?? user.role : "—"}
             />
           </div>
         </div>

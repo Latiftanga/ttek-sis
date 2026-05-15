@@ -7,12 +7,20 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { user, accessToken } = useAuthStore();
 
-  // `useEffect` only runs on the client. By the time it fires, Zustand's
-  // persist middleware has already read localStorage synchronously and
-  // restored the auth state — so reading `user`/`accessToken` after setting
-  // hydrated=true will always reflect the real persisted values.
+  // Wait for zustand persist to finish rehydrating from localStorage before
+  // making auth decisions. `.persist` is only available on the client, so we
+  // must not touch it during SSR — defer the check to useEffect.
   const [hydrated, setHydrated] = useState(false);
-  useEffect(() => { setHydrated(true); }, []);
+  useEffect(() => {
+    if (useAuthStore.persist.hasHydrated()) {
+      setHydrated(true);
+      return;
+    }
+    const unsub = useAuthStore.persist.onFinishHydration(() =>
+      setHydrated(true)
+    );
+    return unsub;
+  }, []);
 
   useEffect(() => {
     if (hydrated && (!user || !accessToken)) {
@@ -24,14 +32,17 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     return (
       <div
         role="status"
-        aria-label="Loading"
-        className="flex h-screen items-center justify-center bg-gray-50 dark:bg-gray-950"
+        aria-live="polite"
+        className="flex h-screen flex-col items-center justify-center gap-4 bg-gray-50 dark:bg-gray-950"
       >
         <div
           aria-hidden="true"
           className="h-8 w-8 animate-spin rounded-full border-4 border-t-transparent"
           style={{ borderColor: "var(--brand)", borderTopColor: "transparent" }}
         />
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Loading your school…
+        </p>
       </div>
     );
   }

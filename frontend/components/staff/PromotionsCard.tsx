@@ -216,7 +216,7 @@ export default function PromotionsCard({ staffId, promotions, currentRank, canEd
               error={errors.effective_date?.message}
               {...register("effective_date")}
             />
-            <Select id="promotion_type" label="Type" {...register("promotion_type")}>
+            <Select id="promotion_type" label="Type *" {...register("promotion_type")}>
               <option value="substantive">Substantive</option>
               <option value="acting">Acting</option>
             </Select>
@@ -228,7 +228,7 @@ export default function PromotionsCard({ staffId, promotions, currentRank, canEd
             placeholder="GES/RD/XXX/2024"
             {...register("reference_no")}
           />
-          <Input id="notes" label="Notes" placeholder="Optional notes" {...register("notes")} />
+          <Input id="notes" label="Notes" placeholder="e.g. Promoted after PhD completion" {...register("notes")} />
 
           <div className="flex justify-end gap-2">
             <Button type="button" variant="secondary" size="sm" onClick={() => { setAdding(false); reset(); }}>

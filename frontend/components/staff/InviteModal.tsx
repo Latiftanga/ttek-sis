@@ -132,7 +132,7 @@ export default function InviteModal({ open, onClose, staff }: Props) {
             {...register("email")}
           />
 
-          <Select id="role" label="Role" {...register("role")}>
+          <Select id="role" label="Role *" {...register("role")}>
             {ROLES.map((r) => (
               <option key={r.value} value={r.value}>{r.label}</option>
             ))}

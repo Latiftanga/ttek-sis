@@ -141,7 +141,7 @@ export default function AddContactModal({ open, onClose, studentId }: AddContact
       toast.success("Contact added");
       handleClose();
     } catch (err) {
-      toast.error(getApiError(err) || "Failed to add contact");
+      toast.error(getApiError(err, "Couldn't add contact. Please try again."));
     }
   }
 

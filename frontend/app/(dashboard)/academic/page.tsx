@@ -59,9 +59,28 @@ const SCHOOL_LEVEL_GROUPS: Record<string, string[]> = {
 
 // ── Year form schema ──────────────────────────────────────────────────────
 
+// Accept common variants (2024/2025, 2024-2025, 2024 2025, 2024/25) and
+// normalize to the canonical YYYY/YYYY format before submit.
+function normalizeYearName(raw: string): string {
+  const trimmed = raw.trim();
+  const m = trimmed.match(/^(\d{4})\s*[\/\-\s]\s*(\d{2}|\d{4})$/);
+  if (!m) return trimmed;
+  const start = m[1];
+  const end = m[2].length === 2 ? start.slice(0, 2) + m[2] : m[2];
+  return `${start}/${end}`;
+}
+
 const yearSchema = z
   .object({
-    name:       z.string().regex(/^\d{4}\/\d{4}$/, "Format: YYYY/YYYY e.g. 2024/2025"),
+    name: z
+      .string()
+      .min(1, "Required")
+      .transform(normalizeYearName)
+      .refine((v) => {
+        const m = v.match(/^(\d{4})\/(\d{4})$/);
+        if (!m) return false;
+        return Number(m[2]) === Number(m[1]) + 1;
+      }, "Enter two consecutive years, e.g. 2024/2025"),
     start_date: z.string().min(1, "Required"),
     end_date:   z.string().min(1, "Required"),
     is_current: z.boolean(),
@@ -91,7 +110,7 @@ type TermValues = z.infer<typeof termSchema>;
 
 const programmeSchema = z.object({
   name:        z.string().min(1, "Name is required"),
-  short_name:  z.string().min(1, "Short code is required").max(10, "Max 10 characters").toUpperCase(),
+  short_name:  z.string().min(1, "Abbreviation is required").max(10, "Max 10 characters").toUpperCase(),
   description: z.string().optional(),
 });
 type ProgrammeValues = z.infer<typeof programmeSchema>;
@@ -425,13 +444,20 @@ function YearForm({
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
-      <Input
-        id="year_name"
-        label="Year Name *"
-        placeholder="2024/2025"
-        error={errors.name?.message}
-        {...register("name")}
-      />
+      <div className="space-y-1">
+        <Input
+          id="year_name"
+          label="Year Name *"
+          placeholder="2024/2025"
+          error={errors.name?.message}
+          {...register("name")}
+        />
+        {!errors.name?.message && (
+          <p className="text-xs text-gray-400 dark:text-gray-500">
+            Accepted: 2024/2025, 2024-2025, or 2024/25
+          </p>
+        )}
+      </div>
       <div className="grid grid-cols-2 gap-4">
         <Input id="year_start" label="Start Date *" type="date" error={errors.start_date?.message} {...register("start_date")} />
         <Input id="year_end"   label="End Date *"   type="date" error={errors.end_date?.message}   {...register("end_date")} />
@@ -702,7 +728,7 @@ function EditSubjectModal({
     <Modal open onClose={onClose} title="Edit Subject" size="sm">
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
         <Input id="edit_subj_name" label="Subject Name *" error={errors.name?.message} {...register("name")} />
-        <Input id="edit_subj_code" label="Code (optional)" error={errors.code?.message} {...register("code")} />
+        <Input id="edit_subj_code" label="Code" error={errors.code?.message} {...register("code")} />
         {isSHS && (
           <Select id="edit_subj_category" label="Category" error={errors.category?.message} {...register("category")}>
             <option value="core">Core</option>
@@ -879,7 +905,7 @@ function SubjectsSection({ isAdmin, schoolType }: { isAdmin: boolean; schoolType
           />
           <Input
             id="subj_code"
-            label="Code (optional)"
+            label="Code"
             placeholder="e.g. MATH"
             error={errors.code?.message}
             {...register("code")}
@@ -899,10 +925,16 @@ function SubjectsSection({ isAdmin, schoolType }: { isAdmin: boolean; schoolType
 
       {/* Delete subject confirmation */}
       <Modal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="Remove Subject?" size="sm">
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          Remove <strong>{deleteTarget?.name}</strong>? This cannot be undone and may affect
-          existing assessments linked to this subject.
-        </p>
+        <div className="space-y-3 text-sm text-gray-600 dark:text-gray-400">
+          <p>
+            Remove <strong className="text-gray-900 dark:text-gray-100">{deleteTarget?.name}</strong>?
+          </p>
+          <ul className="list-disc space-y-1 pl-5 text-xs">
+            <li>Any classes and students currently assigned this subject will lose it.</li>
+            <li>If scores or attendance have already been recorded for it, the removal will be blocked.</li>
+          </ul>
+          <p className="text-xs">This cannot be undone.</p>
+        </div>
         <div className="mt-5 flex justify-end gap-3">
           <Button variant="secondary" size="sm" onClick={() => setDeleteTarget(null)}>Cancel</Button>
           <Button
@@ -933,8 +965,10 @@ function ProgrammesSection({ isAdmin }: { isAdmin: boolean }) {
   const [editTarget, setEditTarget]     = useState<SchoolProgramme | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SchoolProgramme | null>(null);
 
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } =
+  const { register, handleSubmit, reset, watch, formState: { errors, isSubmitting } } =
     useForm<ProgrammeValues>({ resolver: zodResolver(programmeSchema) });
+
+  const shortPreview = (watch("short_name") || "").toUpperCase().trim();
 
   function openAdd() {
     reset({ name: "", short_name: "", description: "" });
@@ -1040,13 +1074,23 @@ function ProgrammesSection({ isAdmin }: { isAdmin: boolean }) {
           />
           <Input
             id="prog_short"
-            label="Short Code *"
+            label="Abbreviation *"
             placeholder="e.g. SC"
             error={errors.short_name?.message}
             {...register("short_name")}
           />
-          <p className="text-xs text-gray-400 dark:text-gray-500 -mt-2">
-            Used in class names — e.g. SC produces "1SC A", ART produces "2ART B"
+          <p className="-mt-2 text-xs text-gray-400 dark:text-gray-500">
+            Shown in class names.{" "}
+            {shortPreview ? (
+              <>
+                Preview:{" "}
+                <span className="font-mono text-gray-600 dark:text-gray-300">
+                  1{shortPreview} A
+                </span>
+              </>
+            ) : (
+              <>e.g. SC → 1SC A, ART → 2ART B</>
+            )}
           </p>
           <Textarea
             id="prog_desc"
@@ -1198,21 +1242,29 @@ function HousesSection({ isAdmin }: { isAdmin: boolean }) {
           />
           <div className="space-y-1">
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Colour <span className="text-gray-400 font-normal">(optional)</span>
+              Colour
             </label>
             <div className="flex items-center gap-3">
               <input
                 type="color"
-                className="h-9 w-14 cursor-pointer rounded border border-gray-200 bg-white p-0.5 dark:border-gray-700 dark:bg-gray-900"
+                aria-label="Pick a colour"
+                className="h-10 w-16 cursor-pointer rounded border border-gray-200 bg-white p-1 dark:border-gray-700 dark:bg-gray-900"
                 value={colorValue || "#6b7280"}
                 onChange={(e) => setValue("color", e.target.value, { shouldValidate: true })}
               />
-              <Input
-                id="house_color"
-                placeholder="#6b7280"
-                error={errors.color?.message}
-                {...register("color")}
-              />
+              {colorValue ? (
+                <button
+                  type="button"
+                  onClick={() => setValue("color", "", { shouldValidate: true })}
+                  className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                >
+                  Clear colour
+                </button>
+              ) : (
+                <span className="text-sm text-gray-400 dark:text-gray-500">
+                  Tap to choose
+                </span>
+              )}
             </div>
           </div>
           <div className="flex justify-end gap-3 border-t border-gray-100 pt-4 dark:border-gray-800">

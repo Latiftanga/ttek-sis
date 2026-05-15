@@ -182,7 +182,7 @@ export default function StudentDetailPage() {
         { duration: 8000 }
       );
     } catch (err) {
-      toast.error(getApiError(err) || "Could not enable portal");
+      toast.error(getApiError(err, "Could not enable portal. Please try again."));
     }
   }
 
@@ -191,7 +191,7 @@ export default function StudentDetailPage() {
       await disable.mutateAsync();
       toast.success("Portal access disabled");
     } catch (err) {
-      toast.error(getApiError(err) || "Could not disable portal");
+      toast.error(getApiError(err, "Could not disable portal. Please try again."));
     }
   }
 
@@ -203,7 +203,7 @@ export default function StudentDetailPage() {
         { duration: 8000 }
       );
     } catch (err) {
-      toast.error(getApiError(err) || "Could not reset PIN");
+      toast.error(getApiError(err, "Could not reset PIN. Please try again."));
     }
   }
 

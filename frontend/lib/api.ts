@@ -370,14 +370,130 @@ export const academicApi = {
 };
 
 // ── Attendance ─────────────────────────────────────────────────────────
+export type AttendanceStatus = "present" | "absent" | "late" | "excused";
+
+export interface AttendanceRecord {
+  id: string;
+  school_id: string;
+  session_id: string;
+  student_id: string;
+  status: AttendanceStatus;
+  reason: string | null;
+  recorded_by: string;
+  recorded_at: string;
+  is_edited: boolean;
+  original_status: AttendanceStatus | null;
+  last_edited_by: string | null;
+  last_edited_at: string | null;
+  edit_reason: string | null;
+}
+
+export interface AttendanceSession {
+  id: string;
+  school_id: string;
+  class_id: string;
+  term_id: string;
+  teacher_id: string;
+  subject_id: string | null;
+  period_id: string | null;
+  session_type: "daily" | "lesson";
+  date: string;
+  status: "open" | "submitted" | "cancelled";
+  client_opened_at: string;
+  server_synced_at: string;
+  submitted_at: string | null;
+  sync_mode: "online" | "offline";
+  sync_gap_seconds: number | null;
+  is_flagged: boolean;
+  flag_reason: string | null;
+  review_outcome: "cleared" | "penalised" | null;
+  created_at: string;
+}
+
+export interface ClassAttendanceSummary {
+  class_id: string;
+  class_name: string;
+  date: string;
+  total_students: number;
+  present: number;
+  absent: number;
+  late: number;
+  excused: number;
+  not_marked: number;
+  session_id: string | null;
+  session_status: "open" | "submitted" | null;
+}
+
+export interface SchoolAttendanceToday {
+  date: string;
+  total_classes: number;
+  sessions_submitted: number;
+  sessions_open: number;
+  sessions_not_started: number;
+  flagged_sessions: number;
+}
+
+export interface SessionCreateBody {
+  class_id: string;
+  term_id: string;
+  session_type: "daily" | "lesson";
+  date: string;            // YYYY-MM-DD
+  client_opened_at: string; // ISO datetime
+  subject_id?: string;
+  period_id?: string;
+  client_id?: string;
+}
+
+export interface AttendanceRecordInput {
+  student_id: string;
+  status: AttendanceStatus;
+  reason?: string | null;
+}
+
+export interface SessionSubmitBody {
+  client_submitted_at: string;
+  records: AttendanceRecordInput[];
+}
+
+export interface RecordEditBody {
+  status: AttendanceStatus;
+  reason?: string | null;
+  edit_reason: string;
+}
+
+export interface FlaggedSessionBrief {
+  session_id: string;
+  class_id: string;
+  date: string;
+  teacher_id: string;
+  flag_reason: string | null;
+}
+
+export interface AttendanceAlertsResponse {
+  flagged_sessions: FlaggedSessionBrief[];
+  threshold_pct: number;
+  term_id: string;
+  note: string;
+}
+
 export const attendanceApi = {
   listPeriods: () => api.get("/attendance/periods").then((r) => r.data),
-  createSession: (body: unknown) =>
+  createSession: (body: SessionCreateBody): Promise<AttendanceSession> =>
     api.post("/attendance/sessions", body).then((r) => r.data),
-  submitSession: (sessionId: string, body: unknown) =>
+  submitSession: (sessionId: string, body: SessionSubmitBody): Promise<AttendanceSession> =>
     api.post(`/attendance/sessions/${sessionId}/submit`, body).then((r) => r.data),
-  listSessions: (params?: Record<string, string>) =>
+  listSessions: (params?: Record<string, string>): Promise<AttendanceSession[]> =>
     api.get("/attendance/sessions", { params }).then((r) => r.data),
+  listRecords: (sessionId: string): Promise<AttendanceRecord[]> =>
+    api.get(`/attendance/sessions/${sessionId}/records`).then((r) => r.data),
+  patchRecord: (recordId: string, body: RecordEditBody): Promise<AttendanceRecord> =>
+    api.patch(`/attendance/records/${recordId}`, body).then((r) => r.data),
+  getTodayForClass: (classId: string): Promise<ClassAttendanceSummary> =>
+    api.get(`/attendance/class/${classId}/today`).then((r) => r.data),
+  getSchoolToday: (): Promise<SchoolAttendanceToday> =>
+    api.get("/attendance/today").then((r) => r.data),
+  getAlerts: (): Promise<AttendanceAlertsResponse> =>
+    api.get("/attendance/alerts").then((r) => r.data),
   getClassSummary: (classId: string, params?: Record<string, string>) =>
     api
       .get(`/attendance/summary/class/${classId}`, { params })
