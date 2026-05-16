@@ -269,12 +269,33 @@ async def submit_session(
         session.flag_reason = "submitted_too_fast"
 
     # Tenant boundary — every student must belong to this school
-    await _assert_students_in_school(
-        [r.student_id for r in body.records], school.id, db
-    )
+    submitted_ids = [r.student_id for r in body.records]
+    await _assert_students_in_school(submitted_ids, school.id, db)
+
+    # Each submitted student must be actively enrolled in this class and
+    # must have joined by the session date — otherwise we'd be marking
+    # attendance for a student who isn't even in the room.
+    if submitted_ids:
+        valid_res = await db.execute(
+            select(Enrollment.student_id).where(
+                Enrollment.school_id == school.id,
+                Enrollment.class_id == session.class_id,
+                Enrollment.status == "active",
+                Enrollment.start_date <= session.date,
+                Enrollment.student_id.in_(submitted_ids),
+            )
+        )
+        valid_ids = {row[0] for row in valid_res.all()}
+        invalid = [sid for sid in submitted_ids if sid not in valid_ids]
+        if invalid:
+            raise HTTPException(
+                400,
+                f"{len(invalid)} student(s) cannot be marked for this session — "
+                f"they are not in this class, or they joined after "
+                f"{session.date}.",
+            )
 
     # Batch-fetch already-recorded students to avoid N+1 on duplicate check
-    submitted_ids = [r.student_id for r in body.records]
     already_res = await db.execute(
         select(AttendanceRecord.student_id).where(
             AttendanceRecord.session_id == session_id,

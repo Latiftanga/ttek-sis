@@ -1,10 +1,11 @@
 import uuid as uuid_lib
+from datetime import date
 from typing import Annotated, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, update, delete as sql_delete
+from sqlalchemy import select, func, update, delete as sql_delete, or_, and_
 from sqlalchemy.orm import selectinload
 
 from app.dependencies import CurrentUser, CurrentSchool, DB, require_roles
@@ -70,6 +71,19 @@ async def create_academic_year(
     if exists.scalar_one_or_none():
         raise HTTPException(409, f"Academic year '{body.name}' already exists")
 
+    overlap = await db.execute(
+        select(AcademicYear.id).where(
+            AcademicYear.school_id == school.id,
+            AcademicYear.start_date < body.end_date,
+            AcademicYear.end_date > body.start_date,
+        ).limit(1)
+    )
+    if overlap.scalar_one_or_none():
+        raise HTTPException(
+            400,
+            "These dates overlap with an existing academic year.",
+        )
+
     if body.is_current:
         await _unset_current_year(school.id, db)
 
@@ -92,9 +106,68 @@ async def update_academic_year(
     _: WriteRole, school: CurrentSchool, db: DB,
 ):
     year = await _get_year(year_id, school.id, db)
+    updates = body.model_dump(exclude_unset=True)
+
+    new_start = updates.get("start_date", year.start_date)
+    new_end = updates.get("end_date", year.end_date)
+    if "start_date" in updates or "end_date" in updates:
+        if new_end <= new_start:
+            raise HTTPException(400, "end_date must be after start_date")
+
+        # Existing terms must stay inside the new range.
+        outside_term = await db.execute(
+            select(Term.id).where(
+                Term.school_id == school.id,
+                Term.academic_year_id == year.id,
+                or_(Term.start_date < new_start, Term.end_date > new_end),
+            ).limit(1)
+        )
+        if outside_term.scalar_one_or_none():
+            raise HTTPException(
+                400,
+                "Cannot change these dates — one or more terms in this year "
+                "would fall outside the new range. Adjust the term dates first.",
+            )
+
+        # Existing enrollments must stay inside the new range.
+        outside_enr = await db.execute(
+            select(Enrollment.id).where(
+                Enrollment.school_id == school.id,
+                Enrollment.academic_year_id == year.id,
+                or_(
+                    Enrollment.start_date < new_start,
+                    and_(
+                        Enrollment.end_date.is_not(None),
+                        Enrollment.end_date > new_end,
+                    ),
+                ),
+            ).limit(1)
+        )
+        if outside_enr.scalar_one_or_none():
+            raise HTTPException(
+                400,
+                "Cannot change these dates — one or more enrollments in this "
+                "year would fall outside the new range.",
+            )
+
+        # No overlap with other academic years.
+        overlap = await db.execute(
+            select(AcademicYear.id).where(
+                AcademicYear.school_id == school.id,
+                AcademicYear.id != year.id,
+                AcademicYear.start_date < new_end,
+                AcademicYear.end_date > new_start,
+            ).limit(1)
+        )
+        if overlap.scalar_one_or_none():
+            raise HTTPException(
+                400,
+                "These dates overlap with another academic year.",
+            )
+
     if body.is_current is True:
         await _unset_current_year(school.id, db)
-    for field, value in body.model_dump(exclude_unset=True).items():
+    for field, value in updates.items():
         setattr(year, field, value)
     await db.commit()
     await db.refresh(year)
@@ -224,6 +297,43 @@ async def update_term(
             raise HTTPException(
                 400,
                 "These dates overlap with another term in this academic year.",
+            )
+
+        # Existing assessments tied to this term must stay within the new range.
+        outside_assessment = await db.execute(
+            select(Assessment.id).where(
+                Assessment.school_id == school.id,
+                Assessment.term_id == term.id,
+                Assessment.date_administered.is_not(None),
+                or_(
+                    Assessment.date_administered < new_start,
+                    Assessment.date_administered > new_end,
+                ),
+            ).limit(1)
+        )
+        if outside_assessment.scalar_one_or_none():
+            raise HTTPException(
+                400,
+                "Cannot change these dates — one or more assessments in this "
+                "term would fall outside the new range.",
+            )
+
+        # Existing attendance sessions tied to this term must stay within.
+        outside_session = await db.execute(
+            select(AttendanceSession.id).where(
+                AttendanceSession.school_id == school.id,
+                AttendanceSession.term_id == term.id,
+                or_(
+                    AttendanceSession.date < new_start,
+                    AttendanceSession.date > new_end,
+                ),
+            ).limit(1)
+        )
+        if outside_session.scalar_one_or_none():
+            raise HTTPException(
+                400,
+                "Cannot change these dates — one or more attendance sessions "
+                "in this term would fall outside the new range.",
             )
 
     if body.is_current is True:
@@ -1140,6 +1250,9 @@ async def transfer_student(
     if enrollment.status != "active":
         raise HTTPException(400, f"Cannot transfer — status is '{enrollment.status}'")
 
+    if body.end_date is not None:
+        await _assert_end_date_sane(body.end_date, enrollment, school.id, db)
+
     enrollment.status = "transferred"
     enrollment.end_date = body.end_date
     enrollment.notes = body.notes
@@ -1172,6 +1285,9 @@ async def graduate_student(
             f"Student is in '{class_.name}' which is not a final year class "
             f"(final level for {class_.level_group.upper()} is {final_level}).",
         )
+
+    if body.end_date is not None:
+        await _assert_end_date_sane(body.end_date, enrollment, school.id, db)
 
     enrollment.status = "graduated"
     enrollment.end_date = body.end_date
@@ -1447,6 +1563,35 @@ async def _get_enrollment(
     if not enrollment:
         raise HTTPException(404, "Enrollment not found")
     return enrollment
+
+
+async def _assert_end_date_sane(
+    end_date: date,
+    enrollment: Enrollment,
+    school_id: UUID,
+    db: AsyncSession,
+) -> None:
+    """Closing-date sanity for transfer/graduate: not before the student
+    joined and not past the academic year end."""
+    if end_date < enrollment.start_date:
+        raise HTTPException(
+            400,
+            f"End date {end_date} is before the student's start date "
+            f"({enrollment.start_date}).",
+        )
+    year_res = await db.execute(
+        select(AcademicYear).where(
+            AcademicYear.id == enrollment.academic_year_id,
+            AcademicYear.school_id == school_id,
+        )
+    )
+    year = year_res.scalar_one()
+    if end_date > year.end_date:
+        raise HTTPException(
+            400,
+            f"End date {end_date} is past the end of academic year "
+            f"'{year.name}' ({year.end_date}).",
+        )
 
 
 async def _unset_current_year(school_id: UUID, db: AsyncSession) -> None:
