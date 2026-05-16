@@ -1,23 +1,31 @@
 "use client";
 import { useEffect, useId, useRef } from "react";
-import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import Button from "@/components/ui/Button";
 
-interface DrawerProps {
+interface ConfirmSheetProps {
   open: boolean;
   onClose: () => void;
   title: string;
-  children: React.ReactNode;
-  width?: "md" | "lg" | "xl";
+  description: React.ReactNode;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  variant?: "danger" | "primary";
+  loading?: boolean;
+  onConfirm: () => void;
 }
 
-export default function Drawer({
+export default function ConfirmSheet({
   open,
   onClose,
   title,
-  children,
-  width = "lg",
-}: DrawerProps) {
+  description,
+  confirmLabel = "Confirm",
+  cancelLabel = "Cancel",
+  variant = "danger",
+  loading = false,
+  onConfirm,
+}: ConfirmSheetProps) {
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
@@ -63,19 +71,17 @@ export default function Drawer({
     return () => { document.body.style.overflow = ""; };
   }, [open]);
 
-  const widths = { md: "md:max-w-md", lg: "md:max-w-lg", xl: "md:max-w-xl" };
-
   return (
     <div
-      role="dialog"
+      role="alertdialog"
       aria-modal="true"
       aria-labelledby={titleId}
       className={cn(
         "fixed inset-0 z-50 flex transition-all",
-        // mobile: sheet slides up from bottom
+        // mobile: sheet from bottom
         "items-end justify-center",
-        // desktop: panel slides in from right edge
-        "md:items-stretch md:justify-end",
+        // desktop: centered dialog
+        "md:items-center",
         open ? "pointer-events-auto" : "pointer-events-none"
       )}
     >
@@ -93,41 +99,37 @@ export default function Drawer({
       <div
         ref={panelRef}
         className={cn(
-          "relative flex flex-col bg-white shadow-2xl dark:bg-gray-900",
-          "transition-transform duration-300 ease-in-out",
-          // mobile: full-width bottom sheet, capped height, rounded top corners
-          "w-full max-h-[92vh] rounded-t-2xl",
-          // desktop: full-height side panel, capped width, no rounding
-          "md:h-full md:max-h-full md:rounded-none",
-          widths[width],
-          // closed: slide down on mobile, slide right on desktop
-          // open:   in-place on mobile, in-place on desktop
+          "relative w-full bg-white shadow-2xl dark:bg-gray-900",
+          "transition-all duration-300 ease-in-out",
+          // mobile: full-width bottom sheet
+          "rounded-t-2xl px-6 pb-8 pt-3",
+          // desktop: compact centered card
+          "md:max-w-sm md:rounded-2xl md:p-6",
           open
-            ? "translate-y-0 md:translate-x-0"
-            : "translate-y-full md:translate-y-0 md:translate-x-full"
+            ? "translate-y-0 md:scale-100 md:opacity-100"
+            : "translate-y-full md:translate-y-0 md:scale-95 md:opacity-0"
         )}
       >
-        {/* drag handle — visible on mobile only */}
-        <div className="flex justify-center pt-3 md:hidden" aria-hidden="true">
+        {/* drag handle — mobile only */}
+        <div className="mb-5 flex justify-center md:hidden" aria-hidden="true">
           <div className="h-1 w-10 rounded-full bg-gray-300 dark:bg-gray-600" />
         </div>
 
-        {/* header */}
-        <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-gray-700">
-          <h2 id={titleId} className="text-base font-semibold text-gray-900 dark:text-white">
-            {title}
-          </h2>
-          <button
-            onClick={onClose}
-            aria-label="Close panel"
-            className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
-          >
-            <X className="h-5 w-5" />
-          </button>
+        <h2 id={titleId} className="text-base font-semibold text-gray-900 dark:text-white">
+          {title}
+        </h2>
+
+        <div className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+          {description}
         </div>
 
-        {/* scrollable body */}
-        <div className="flex-1 overflow-y-auto px-6 py-5">{children}</div>
+        {/* buttons: stacked on mobile (cancel at bottom = thumb-safe), row on desktop */}
+        <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3">
+          <Button variant="secondary" onClick={onClose}>{cancelLabel}</Button>
+          <Button variant={variant} loading={loading} onClick={onConfirm}>
+            {confirmLabel}
+          </Button>
+        </div>
       </div>
     </div>
   );

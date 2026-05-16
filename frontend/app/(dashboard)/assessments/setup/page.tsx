@@ -29,7 +29,8 @@ import { getApiError, cn } from "@/lib/utils";
 import type { AssessmentCategory, GradingScale } from "@/lib/api";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
-import Modal from "@/components/ui/Modal";
+import Drawer from "@/components/ui/Drawer";
+import ConfirmSheet from "@/components/ui/ConfirmSheet";
 import Badge from "@/components/ui/Badge";
 import Textarea from "@/components/ui/Textarea";
 
@@ -331,7 +332,7 @@ function ModeFormModal({
   }
 
   return (
-    <Modal open onClose={onClose} title={isEdit ? `Edit ${mode!.name}` : "Add assessment mode"} size="sm">
+    <Drawer open onClose={onClose} title={isEdit ? `Edit ${mode!.name}` : "Add assessment mode"} width="md">
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
         <Input
           id="m_name"
@@ -416,7 +417,7 @@ function ModeFormModal({
           </Button>
         </div>
       </form>
-    </Modal>
+    </Drawer>
   );
 }
 
@@ -438,29 +439,26 @@ function DeleteModeModal({
     }
   }
   return (
-    <Modal open onClose={onClose} title="Remove assessment mode?" size="sm">
-      <p className="text-sm text-gray-500 dark:text-gray-400">
-        Remove{" "}
-        <strong className="text-gray-900 dark:text-gray-100">{mode.name}</strong>?
-      </p>
-      <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-gray-500 dark:text-gray-400">
-        <li>If any assessments use this mode, removal will be blocked.</li>
-        <li>Otherwise the mode is deactivated (kept for historical records).</li>
-      </ul>
-      <div className="mt-5 flex justify-end gap-3">
-        <Button variant="secondary" size="sm" onClick={onClose}>
-          Cancel
-        </Button>
-        <Button
-          variant="danger"
-          size="sm"
-          loading={del.isPending}
-          onClick={handleDelete}
-        >
-          Remove
-        </Button>
-      </div>
-    </Modal>
+    <ConfirmSheet
+      open
+      onClose={onClose}
+      title="Remove assessment mode?"
+      description={
+        <>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Remove <strong className="text-gray-900 dark:text-gray-100">{mode.name}</strong>?
+          </p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-gray-500 dark:text-gray-400">
+            <li>If any assessments use this mode, removal will be blocked.</li>
+            <li>Otherwise the mode is deactivated (kept for historical records).</li>
+          </ul>
+        </>
+      }
+      confirmLabel="Remove"
+      variant="danger"
+      loading={del.isPending}
+      onConfirm={handleDelete}
+    />
   );
 }
 
@@ -669,7 +667,7 @@ function ScaleFormModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <Modal open onClose={onClose} title="Add grading scale" size="sm">
+    <Drawer open onClose={onClose} title="Add grading scale" width="md">
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
         <Input
           id="s_name"
@@ -695,7 +693,7 @@ function ScaleFormModal({ onClose }: { onClose: () => void }) {
           </Button>
         </div>
       </form>
-    </Modal>
+    </Drawer>
   );
 }
 
@@ -743,7 +741,7 @@ function BandFormModal({
   }
 
   return (
-    <Modal open onClose={onClose} title={`Add band — ${scale.name}`} size="sm">
+    <Drawer open onClose={onClose} title={`Add band — ${scale.name}`} width="md">
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
         <div className="grid grid-cols-2 gap-3">
           <Input
@@ -799,7 +797,7 @@ function BandFormModal({
           </Button>
         </div>
       </form>
-    </Modal>
+    </Drawer>
   );
 }
 

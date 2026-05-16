@@ -5,7 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import toast from "react-hot-toast";
 import { Copy, Check } from "lucide-react";
-import Modal from "@/components/ui/Modal";
+import Drawer from "@/components/ui/Drawer";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import Button from "@/components/ui/Button";
@@ -79,7 +79,7 @@ export default function InviteModal({ open, onClose, staff }: Props) {
   const title = staff.user ? "Reset Login Credentials" : "Create Login Account";
 
   return (
-    <Modal open={open} onClose={handleClose} title={title}>
+    <Drawer open={open} onClose={handleClose} title={title} width="md">
       {tempPassword ? (
         <div className="space-y-5">
           <div className="rounded-lg bg-emerald-50 p-4 dark:bg-emerald-950/40">
@@ -157,6 +157,6 @@ export default function InviteModal({ open, onClose, staff }: Props) {
           </div>
         </form>
       )}
-    </Modal>
+    </Drawer>
   );
 }

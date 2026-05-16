@@ -2,7 +2,7 @@
 import { useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { Upload, FileSpreadsheet, Download, CheckCircle2, XCircle } from "lucide-react";
-import Modal from "@/components/ui/Modal";
+import Drawer from "@/components/ui/Drawer";
 import Button from "@/components/ui/Button";
 import { studentsApi, type BulkUploadResult } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
@@ -80,7 +80,7 @@ export default function BulkUploadModal({ open, onClose }: BulkUploadModalProps)
   }
 
   return (
-    <Modal open={open} onClose={handleClose} title="Bulk Upload Students" size="lg">
+    <Drawer open={open} onClose={handleClose} title="Bulk Upload Students" width="xl">
       <div className="space-y-5">
         {/* template download */}
         <div className="flex items-start gap-3 rounded-lg bg-blue-50 p-4 dark:bg-blue-950/40">
@@ -234,6 +234,6 @@ export default function BulkUploadModal({ open, onClose }: BulkUploadModalProps)
           )}
         </div>
       </div>
-    </Modal>
+    </Drawer>
   );
 }

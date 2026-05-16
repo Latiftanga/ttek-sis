@@ -1,6 +1,6 @@
 "use client";
 import { Users } from "lucide-react";
-import Modal from "@/components/ui/Modal";
+import Drawer from "@/components/ui/Drawer";
 import { useClassStudents, type Class } from "@/lib/hooks/useAcademic";
 import { capitalize } from "@/lib/utils";
 
@@ -13,11 +13,11 @@ export default function ClassStudentsModal({ class_, onClose }: ClassStudentsMod
   const { data: students = [], isLoading } = useClassStudents(class_?.id ?? null);
 
   return (
-    <Modal
+    <Drawer
       open={!!class_}
       onClose={onClose}
       title={class_ ? `${class_.name} — Students` : "Students"}
-      size="md"
+      width="md"
     >
       {isLoading ? (
         <div className="space-y-2">
@@ -65,6 +65,6 @@ export default function ClassStudentsModal({ class_, onClose }: ClassStudentsMod
           </div>
         </div>
       )}
-    </Modal>
+    </Drawer>
   );
 }

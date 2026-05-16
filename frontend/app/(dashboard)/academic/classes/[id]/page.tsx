@@ -14,11 +14,11 @@ import {
 import Button from "@/components/ui/Button";
 import Select from "@/components/ui/Select";
 import Input from "@/components/ui/Input";
-import Modal from "@/components/ui/Modal";
 import Drawer from "@/components/ui/Drawer";
+import ConfirmSheet from "@/components/ui/ConfirmSheet";
 import Badge from "@/components/ui/Badge";
 import ClassForm from "@/components/academic/ClassForm";
-import EnrollStudentModal from "@/components/academic/EnrollStudentModal";
+import EnrollStudentDrawer from "@/components/academic/EnrollStudentDrawer";
 import { useAuthStore } from "@/lib/store";
 import { capitalize, getApiError } from "@/lib/utils";
 import {
@@ -96,7 +96,7 @@ function PromoteModal({
   }
 
   return (
-    <Modal open onClose={onClose} title="Promote Student" size="sm">
+    <Drawer open onClose={onClose} title="Promote Student" width="md">
       <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
         Promoting <strong className="text-gray-900 dark:text-white">
           {student.first_name} {student.last_name}
@@ -122,7 +122,7 @@ function PromoteModal({
           <Button type="submit" loading={isSubmitting}>Promote</Button>
         </div>
       </form>
-    </Modal>
+    </Drawer>
   );
 }
 
@@ -155,7 +155,7 @@ function RepeatModal({
   }
 
   return (
-    <Modal open onClose={onClose} title="Repeat Year" size="sm">
+    <Drawer open onClose={onClose} title="Repeat Year" width="md">
       <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
         <strong className="text-gray-900 dark:text-white">
           {student.first_name} {student.last_name}
@@ -175,7 +175,7 @@ function RepeatModal({
           <Button type="submit" loading={isSubmitting}>Confirm Repeat</Button>
         </div>
       </form>
-    </Modal>
+    </Drawer>
   );
 }
 
@@ -201,7 +201,7 @@ function TransferModal({ student, onClose }: { student: ClassStudent; onClose: (
   }
 
   return (
-    <Modal open onClose={onClose} title="Mark as Transferred" size="sm">
+    <Drawer open onClose={onClose} title="Mark as Transferred" width="md">
       <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
         This will mark <strong className="text-gray-900 dark:text-white">
           {student.first_name} {student.last_name}
@@ -215,7 +215,7 @@ function TransferModal({ student, onClose }: { student: ClassStudent; onClose: (
           <Button type="submit" variant="danger" loading={isSubmitting}>Mark Transferred</Button>
         </div>
       </form>
-    </Modal>
+    </Drawer>
   );
 }
 
@@ -241,7 +241,7 @@ function GraduateModal({ student, onClose }: { student: ClassStudent; onClose: (
   }
 
   return (
-    <Modal open onClose={onClose} title="Graduate Student" size="sm">
+    <Drawer open onClose={onClose} title="Graduate Student" width="md">
       <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
         <strong className="text-gray-900 dark:text-white">
           {student.first_name} {student.last_name}
@@ -255,7 +255,7 @@ function GraduateModal({ student, onClose }: { student: ClassStudent; onClose: (
           <Button type="submit" loading={isSubmitting}>Graduate</Button>
         </div>
       </form>
-    </Modal>
+    </Drawer>
   );
 }
 
@@ -297,7 +297,7 @@ function DemoteModal({
   }
 
   return (
-    <Modal open onClose={onClose} title="Demote Student" size="sm">
+    <Drawer open onClose={onClose} title="Demote Student" width="md">
       <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
         Move <strong className="text-gray-900 dark:text-white">{student.first_name} {student.last_name}</strong> down to a lower class.
       </p>
@@ -321,13 +321,13 @@ function DemoteModal({
           <Button type="submit" loading={isSubmitting}>Demote</Button>
         </div>
       </form>
-    </Modal>
+    </Drawer>
   );
 }
 
 // ── Unenroll modal ────────────────────────────────────────────────────────
 
-function UnenrollModal({ student, onClose }: { student: ClassStudent; onClose: () => void }) {
+function UnenrollConfirm({ student, onClose }: { student: ClassStudent; onClose: () => void }) {
   const unenroll = useUnenrollStudent();
 
   async function handleConfirm() {
@@ -341,22 +341,27 @@ function UnenrollModal({ student, onClose }: { student: ClassStudent; onClose: (
   }
 
   return (
-    <Modal open onClose={onClose} title="Unenroll Student?" size="sm">
-      <p className="text-sm text-gray-500 dark:text-gray-400">
-        Hard-delete the enrollment for{" "}
-        <strong className="text-gray-900 dark:text-white">{student.first_name} {student.last_name}</strong>.
-        Use this only for placement mistakes — for proper exits use Transfer or Graduate.
-      </p>
-      <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
-        Will fail if the student already has attendance or scores in this class.
-      </p>
-      <div className="mt-5 flex justify-end gap-3 border-t border-gray-100 pt-4 dark:border-gray-800">
-        <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button type="button" variant="danger" loading={unenroll.isPending} onClick={handleConfirm}>
-          Unenroll
-        </Button>
-      </div>
-    </Modal>
+    <ConfirmSheet
+      open
+      onClose={onClose}
+      title="Unenroll Student?"
+      description={
+        <>
+          <p>
+            Hard-delete the enrollment for{" "}
+            <strong className="text-gray-900 dark:text-white">
+              {student.first_name} {student.last_name}
+            </strong>. Use this only for placement mistakes — for proper exits use Transfer or Graduate.
+          </p>
+          <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+            Will fail if the student already has attendance or scores in this class.
+          </p>
+        </>
+      }
+      confirmLabel="Unenroll"
+      loading={unenroll.isPending}
+      onConfirm={handleConfirm}
+    />
   );
 }
 
@@ -403,7 +408,7 @@ function BulkPromoteModal({
   }
 
   return (
-    <Modal open onClose={onClose} title="Bulk Promote Class" size="sm">
+    <Drawer open onClose={onClose} title="Bulk Promote Class" width="md">
       <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
         Promote all active students from <strong className="text-gray-900 dark:text-white">{fromClassName}</strong> to
         a new class and academic year.
@@ -427,7 +432,7 @@ function BulkPromoteModal({
           <Button type="submit" loading={isSubmitting}>Promote All</Button>
         </div>
       </form>
-    </Modal>
+    </Drawer>
   );
 }
 
@@ -707,7 +712,7 @@ function AddSubjectsModal({
   const allSelected = available.length > 0 && selected.size === available.length;
 
   return (
-    <Modal open={open} onClose={onClose} title="Add Subjects to Class" size="sm">
+    <Drawer open={open} onClose={onClose} title="Add Subjects to Class" width="md">
       <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">
         Pick one or more subjects to add to {className}. Teachers can be assigned after.
       </p>
@@ -744,7 +749,7 @@ function AddSubjectsModal({
                       checked={checked}
                       onChange={() => toggle(s.id)}
                       className="h-4 w-4 rounded accent-[var(--brand)]"
-                    />
+                     />
                     <span className="text-gray-900 dark:text-white">{s.name}</span>
                   </span>
                   <span className="flex items-center gap-2 text-xs text-gray-400">
@@ -772,7 +777,7 @@ function AddSubjectsModal({
           Add {selected.size > 0 ? `(${selected.size})` : ""}
         </Button>
       </div>
-    </Modal>
+    </Drawer>
   );
 }
 
@@ -863,7 +868,7 @@ function ElectivesDrawer({
                     checked={checked}
                     onChange={() => toggle(cs.subject_id)}
                     className="h-4 w-4 rounded accent-[var(--brand)]"
-                  />
+                   />
                   <span className="font-medium text-gray-900 dark:text-white">{cs.subject_name}</span>
                 </span>
                 {cs.subject_code && (
@@ -968,7 +973,7 @@ function SubjectElectivesDrawer({
               checked={allSelected}
               onChange={toggleAll}
               className="h-4 w-4 rounded accent-[var(--brand)]"
-            />
+             />
             {allSelected ? "Deselect all" : `Select all (${students.length})`}
           </label>
           <div className="space-y-1.5">
@@ -988,7 +993,7 @@ function SubjectElectivesDrawer({
                     checked={checked}
                     onChange={() => toggle(s.enrollment_id)}
                     className="h-4 w-4 rounded accent-[var(--brand)]"
-                  />
+                   />
                   <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--brand)]/10 text-xs font-semibold text-[var(--brand)]">
                     {s.first_name[0]}{s.last_name[0]}
                   </div>
@@ -1184,16 +1189,16 @@ function SubjectsTab({ class_, isAdmin }: { class_: Class; isAdmin: boolean }) {
       />
 
       {/* Remove confirmation */}
-      <Modal open={!!removeTarget} onClose={() => setRemoveTarget(null)} title="Remove Subject?" size="sm">
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          Remove <strong>{removeTarget?.subject_name}</strong> from {class_.name}? The subject
-          remains in the school catalogue and can be re-added.
-        </p>
-        <div className="mt-5 flex justify-end gap-3 border-t border-gray-100 pt-4 dark:border-gray-800">
-          <Button type="button" variant="secondary" onClick={() => setRemoveTarget(null)}>Cancel</Button>
-          <Button type="button" variant="danger" onClick={handleRemove}>Remove</Button>
-        </div>
-      </Modal>
+      <ConfirmSheet
+        open={!!removeTarget}
+        onClose={() => setRemoveTarget(null)}
+        title="Remove Subject?"
+        description={
+          <>Remove <strong>{removeTarget?.subject_name}</strong> from {class_.name}? The subject remains in the school catalogue and can be re-added.</>
+        }
+        confirmLabel="Remove"
+        onConfirm={handleRemove}
+      />
 
       {/* Subject-centric elective enrolment drawer */}
       {electiveTarget && (
@@ -1201,7 +1206,7 @@ function SubjectsTab({ class_, isAdmin }: { class_: Class; isAdmin: boolean }) {
           cs={electiveTarget}
           classId={class_.id}
           onClose={() => setElectiveTarget(null)}
-        />
+         />
       )}
     </div>
   );
@@ -1320,7 +1325,7 @@ export default function ClassDetailPage() {
           onAction={handleAction}
           onEnroll={() => setEnrollOpen(true)}
           onBulkPromote={() => setBulkOpen(true)}
-        />
+         />
       )}
       {tab === "subjects" && <SubjectsTab class_={class_} isAdmin={isAdmin} />}
 
@@ -1330,7 +1335,7 @@ export default function ClassDetailPage() {
       </Drawer>
 
       {/* Enroll student modal */}
-      <EnrollStudentModal open={enrollOpen} classId={classId} onClose={() => setEnrollOpen(false)} />
+      <EnrollStudentDrawer open={enrollOpen} classId={classId} onClose={() => setEnrollOpen(false)} />
 
       {/* Individual action modals */}
       {action?.action === "promote" && (
@@ -1339,7 +1344,7 @@ export default function ClassDetailPage() {
           years={years}
           currentClassId={classId}
           onClose={() => setAction(null)}
-        />
+         />
       )}
       {action?.action === "repeat" && (
         <RepeatModal student={action.student} years={years} onClose={() => setAction(null)} />
@@ -1356,10 +1361,10 @@ export default function ClassDetailPage() {
           years={years}
           currentClassId={classId}
           onClose={() => setAction(null)}
-        />
+         />
       )}
       {action?.action === "unenroll" && (
-        <UnenrollModal student={action.student} onClose={() => setAction(null)} />
+        <UnenrollConfirm student={action.student} onClose={() => setAction(null)} />
       )}
 
       {/* Bulk promote modal */}
@@ -1369,7 +1374,7 @@ export default function ClassDetailPage() {
           fromClassName={class_.name}
           years={years}
           onClose={() => setBulkOpen(false)}
-        />
+         />
       )}
     </div>
   );

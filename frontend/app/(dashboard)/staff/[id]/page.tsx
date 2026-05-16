@@ -15,7 +15,7 @@ import { formatDate, getInitials, getApiError } from "@/lib/utils";
 import Button from "@/components/ui/Button";
 import Drawer from "@/components/ui/Drawer";
 import StaffForm from "@/components/staff/StaffForm";
-import InviteModal from "@/components/staff/InviteModal";
+import InviteDrawer from "@/components/staff/InviteDrawer";
 import QualificationsCard from "@/components/staff/QualificationsCard";
 import PromotionsCard from "@/components/staff/PromotionsCard";
 
@@ -260,7 +260,7 @@ export default function StaffDetailPage() {
       </Drawer>
 
       {inviteOpen && (
-        <InviteModal open={inviteOpen} onClose={() => setInviteOpen(false)} staff={member} />
+        <InviteDrawer open={inviteOpen} onClose={() => setInviteOpen(false)} staff={member} />
       )}
     </div>
   );

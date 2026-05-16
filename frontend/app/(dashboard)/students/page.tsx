@@ -1,11 +1,11 @@
 "use client";
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import {
   Search, UserPlus, Upload, Users, ChevronLeft, ChevronRight,
-  MoreHorizontal, Eye, Pencil, Trash2, Phone, Download, X,
+  Eye, Pencil, Trash2, Phone, Download, X,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { studentsApi } from "@/lib/api";
@@ -15,8 +15,10 @@ import { formatDate, getInitials, getApiError } from "@/lib/utils";
 import Button from "@/components/ui/Button";
 import Badge, { statusBadge } from "@/components/ui/Badge";
 import Drawer from "@/components/ui/Drawer";
+import ConfirmSheet from "@/components/ui/ConfirmSheet";
+import ActionMenu from "@/components/ui/ActionMenu";
 import StudentForm from "@/components/students/StudentForm";
-import BulkUploadModal from "@/components/students/BulkUploadModal";
+import BulkUploadDrawer from "@/components/students/BulkUploadDrawer";
 
 const STATUS_TABS = [
   { key: "", label: "All" },
@@ -82,83 +84,6 @@ function SkeletonRow() {
   );
 }
 
-function ActionMenu({
-  student,
-  canEdit,
-  canDelete,
-  onEdit,
-  onDelete,
-}: {
-  student: Student;
-  canEdit: boolean;
-  canDelete: boolean;
-  onEdit: (s: Student) => void;
-  onDelete: (s: Student) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState({ top: 0, right: 0 });
-  const btnRef = useRef<HTMLButtonElement>(null);
-
-  function handleToggle() {
-    if (!open && btnRef.current) {
-      const rect = btnRef.current.getBoundingClientRect();
-      setPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
-    }
-    setOpen((p) => !p);
-  }
-
-  return (
-    <div>
-      <button
-        ref={btnRef}
-        onClick={handleToggle}
-        aria-label="Row actions"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        className="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
-      >
-        <MoreHorizontal className="h-4 w-4" />
-      </button>
-      {open && (
-        <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div
-            role="menu"
-            className="fixed z-20 w-40 rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-800"
-            style={{ top: pos.top, right: pos.right }}
-          >
-            <Link
-              href={`/students/${student.id}`}
-              role="menuitem"
-              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700"
-              onClick={() => setOpen(false)}
-            >
-              <Eye className="h-4 w-4" /> View Profile
-            </Link>
-            {canEdit && (
-              <button
-                role="menuitem"
-                onClick={() => { setOpen(false); onEdit(student); }}
-                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700"
-              >
-                <Pencil className="h-4 w-4" /> Edit
-              </button>
-            )}
-            {canDelete && (
-              <button
-                role="menuitem"
-                onClick={() => { setOpen(false); onDelete(student); }}
-                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
-              >
-                <Trash2 className="h-4 w-4" /> Delete
-              </button>
-            )}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
 
 function exportToCsv(students: Student[], filename: string) {
   const headers = [
@@ -495,10 +420,10 @@ export default function StudentsPage() {
                     <td className="px-4 py-3">
                       <Link
                         href={`/students/${s.id}`}
-                        className="flex items-center gap-3 hover:underline"
+                        className="flex items-center gap-3 group"
                       >
                         <StudentAvatar student={s} />
-                        <span className="font-medium text-gray-900 dark:text-white">
+                        <span className="font-medium text-gray-900 group-hover:text-[var(--brand)] dark:text-white">
                           {s.first_name} {s.last_name}
                         </span>
                       </Link>
@@ -537,13 +462,11 @@ export default function StudentsPage() {
                       </Badge>
                     </td>
                     <td className="px-4 py-3">
-                      <ActionMenu
-                        student={s}
-                        canEdit={canManage}
-                        canDelete={canDelete}
-                        onEdit={handleEdit}
-                        onDelete={setConfirmDelete}
-                      />
+                      <ActionMenu items={[
+                        { label: "View Profile", icon: <Eye className="h-4 w-4" />, href: `/students/${s.id}` },
+                        ...(canManage ? [{ label: "Edit", icon: <Pencil className="h-4 w-4" />, onClick: () => handleEdit(s) }] : []),
+                        ...(canDelete ? [{ label: "Delete", icon: <Trash2 className="h-4 w-4" />, onClick: () => setConfirmDelete(s), variant: "danger" as const }] : []),
+                      ]} />
                     </td>
                   </tr>
                 ))
@@ -599,7 +522,7 @@ export default function StudentsPage() {
         {!isLoading && students.length > 0 && (
           <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3 dark:border-gray-700">
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              Page {page + 1} &middot; {students.length} student{students.length !== 1 ? "s" : ""}
+              Showing {page * PAGE_SIZE + 1}–{page * PAGE_SIZE + students.length}
             </p>
             <div className="flex gap-2">
               <Button variant="secondary" size="sm" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
@@ -619,26 +542,23 @@ export default function StudentsPage() {
       </Drawer>
 
       {/* bulk upload */}
-      <BulkUploadModal open={bulkOpen} onClose={() => setBulkOpen(false)} />
+      <BulkUploadDrawer open={bulkOpen} onClose={() => setBulkOpen(false)} />
 
       {/* delete confirm */}
-      {confirmDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setConfirmDelete(null)} />
-          <div className="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl dark:bg-gray-900">
-            <h3 className="text-base font-semibold text-gray-900 dark:text-white">Delete Student?</h3>
-            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-              This will permanently delete{" "}
-              <strong>{confirmDelete.first_name} {confirmDelete.last_name}</strong>{" "}
-              ({confirmDelete.student_number}) and all their records. This cannot be undone.
-            </p>
-            <div className="mt-5 flex justify-end gap-3">
-              <Button variant="secondary" size="sm" onClick={() => setConfirmDelete(null)}>Cancel</Button>
-              <Button variant="danger" size="sm" loading={deleteStudent.isPending} onClick={handleDelete}>Delete</Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmSheet
+        open={!!confirmDelete}
+        onClose={() => setConfirmDelete(null)}
+        title="Delete Student?"
+        description={
+          confirmDelete
+            ? <>This will permanently delete <strong>{confirmDelete.first_name} {confirmDelete.last_name}</strong> ({confirmDelete.student_number}) and all their records. This cannot be undone.</>
+            : ""
+        }
+        confirmLabel="Delete"
+        variant="danger"
+        loading={deleteStudent.isPending}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

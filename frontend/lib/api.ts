@@ -6,11 +6,14 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 export const api = axios.create({
   baseURL: BASE_URL,
   headers: { "Content-Type": "application/json" },
+  withCredentials: true, // send the httpOnly refresh_token cookie on every request
 });
 
+// Attach the in-memory access token to each request.
+// Tokens are never written to localStorage — the store holds them in memory only.
 api.interceptors.request.use((config) => {
   if (typeof window !== "undefined") {
-    const token = localStorage.getItem("access_token");
+    const token = useAuthStore.getState().accessToken;
     if (token) config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
@@ -27,19 +30,17 @@ api.interceptors.response.use(
     const original = error.config;
     if (error.response?.status === 401 && !original._retry) {
       original._retry = true;
-      const refresh = localStorage.getItem("refresh_token");
-      if (refresh) {
-        try {
-          const { data } = await axios.post(`${BASE_URL}/auth/refresh`, {
-            refresh_token: refresh,
-          });
-          localStorage.setItem("access_token", data.access_token);
-          original.headers.Authorization = `Bearer ${data.access_token}`;
-          return api(original);
-        } catch {
-          redirectToLogin();
-        }
-      } else {
+      try {
+        // Refresh token is sent automatically via the httpOnly cookie.
+        const { data } = await axios.post(
+          `${BASE_URL}/auth/refresh`,
+          {},
+          { withCredentials: true },
+        );
+        useAuthStore.getState().setAccessToken(data.access_token);
+        original.headers.Authorization = `Bearer ${data.access_token}`;
+        return api(original);
+      } catch {
         redirectToLogin();
       }
     }
@@ -51,6 +52,10 @@ api.interceptors.response.use(
 export const authApi = {
   login: (email: string, password: string) =>
     api.post("/auth/login", { email, password }).then((r) => r.data),
+  refresh: () =>
+    axios.post(`${BASE_URL}/auth/refresh`, {}, { withCredentials: true }).then((r) => r.data),
+  logout: () =>
+    axios.post(`${BASE_URL}/auth/logout`, {}, { withCredentials: true }).catch(() => {}),
   me: () => api.get("/me").then((r) => r.data),
 };
 
@@ -216,8 +221,6 @@ export interface ClassCreate {
 }
 
 export interface ClassUpdate {
-  stream?: string | null;
-  programme?: string | null;
   class_teacher_id?: string | null;
   capacity?: number;
   is_active?: boolean;
@@ -661,7 +664,7 @@ export const assessmentsApi = {
   getGradebook: (id: string): Promise<GradebookResponse> =>
     api.get(`/assessments/${id}/gradebook`).then((r) => r.data),
   bulkScore: (id: string, body: BulkScoreBody) =>
-    api.post(`/assessments/${id}/scores/bulk`, body).then((r) => r.data),
+    api.post(`/assessments/${id}/scores`, body).then((r) => r.data),
   editScore: (id: string, studentId: string, body: ScoreEditBody) =>
     api.patch(`/assessments/${id}/scores/${studentId}`, body).then((r) => r.data),
   getScoreHistory: (id: string, studentId: string): Promise<ScoreEditLog[]> =>

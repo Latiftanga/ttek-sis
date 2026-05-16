@@ -15,7 +15,7 @@ import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import Textarea from "@/components/ui/Textarea";
 import Drawer from "@/components/ui/Drawer";
-import Modal from "@/components/ui/Modal";
+import ConfirmSheet from "@/components/ui/ConfirmSheet";
 import Badge from "@/components/ui/Badge";
 import ClassForm from "@/components/academic/ClassForm";
 import { formatDate, getApiError, capitalize } from "@/lib/utils";
@@ -725,7 +725,7 @@ function EditSubjectModal({
   }
 
   return (
-    <Modal open onClose={onClose} title="Edit Subject" size="sm">
+    <Drawer open onClose={onClose} title="Edit Subject" width="md">
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
         <Input id="edit_subj_name" label="Subject Name *" error={errors.name?.message} {...register("name")} />
         <Input id="edit_subj_code" label="Code" error={errors.code?.message} {...register("code")} />
@@ -740,7 +740,7 @@ function EditSubjectModal({
           <Button type="submit" loading={isSubmitting}>Save</Button>
         </div>
       </form>
-    </Modal>
+    </Drawer>
   );
 }
 
@@ -894,7 +894,7 @@ function SubjectsSection({ isAdmin, schoolType }: { isAdmin: boolean; schoolType
       )}
 
       {/* Add subject modal */}
-      <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Add Subject" size="sm">
+      <Drawer open={addOpen} onClose={() => setAddOpen(false)} title="Add Subject" width="md">
         <form onSubmit={handleSubmit(onAddSubject)} className="space-y-4" noValidate>
           <Input
             id="subj_name"
@@ -921,32 +921,27 @@ function SubjectsSection({ isAdmin, schoolType }: { isAdmin: boolean; schoolType
             <Button type="submit" loading={isSubmitting}>Add Subject</Button>
           </div>
         </form>
-      </Modal>
+      </Drawer>
 
       {/* Delete subject confirmation */}
-      <Modal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="Remove Subject?" size="sm">
-        <div className="space-y-3 text-sm text-gray-600 dark:text-gray-400">
-          <p>
-            Remove <strong className="text-gray-900 dark:text-gray-100">{deleteTarget?.name}</strong>?
-          </p>
-          <ul className="list-disc space-y-1 pl-5 text-xs">
-            <li>Any classes and students currently assigned this subject will lose it.</li>
-            <li>If scores or attendance have already been recorded for it, the removal will be blocked.</li>
-          </ul>
-          <p className="text-xs">This cannot be undone.</p>
-        </div>
-        <div className="mt-5 flex justify-end gap-3">
-          <Button variant="secondary" size="sm" onClick={() => setDeleteTarget(null)}>Cancel</Button>
-          <Button
-            variant="danger"
-            size="sm"
-            loading={deleteSubject.isPending}
-            onClick={() => deleteTarget && handleDelete(deleteTarget)}
-          >
-            Remove
-          </Button>
-        </div>
-      </Modal>
+      <ConfirmSheet
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        title="Remove Subject?"
+        description={
+          <div className="space-y-2">
+            <p>Remove <strong className="text-gray-900 dark:text-gray-100">{deleteTarget?.name}</strong>?</p>
+            <ul className="list-disc space-y-1 pl-5 text-xs">
+              <li>Any classes and students currently assigned this subject will lose it.</li>
+              <li>If scores or attendance have already been recorded for it, the removal will be blocked.</li>
+            </ul>
+            <p className="text-xs">This cannot be undone.</p>
+          </div>
+        }
+        confirmLabel="Remove"
+        loading={deleteSubject.isPending}
+        onConfirm={() => deleteTarget && handleDelete(deleteTarget)}
+      />
     </div>
   );
 }
@@ -1063,7 +1058,7 @@ function ProgrammesSection({ isAdmin }: { isAdmin: boolean }) {
         </div>
       )}
 
-      <Modal open={formOpen} onClose={() => setFormOpen(false)} title={editTarget ? "Edit Programme" : "Add Programme"} size="sm">
+      <Drawer open={formOpen} onClose={() => setFormOpen(false)} title={editTarget ? "Edit Programme" : "Add Programme"} width="md">
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
           <Input
             id="prog_name"
@@ -1104,19 +1099,17 @@ function ProgrammesSection({ isAdmin }: { isAdmin: boolean }) {
             <Button type="submit" loading={isSubmitting}>{editTarget ? "Save Changes" : "Add Programme"}</Button>
           </div>
         </form>
-      </Modal>
+      </Drawer>
 
-      <Modal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="Remove Programme?" size="sm">
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          Remove <strong>{deleteTarget?.name}</strong>? Students already assigned this programme keep the name; only future assignments are affected.
-        </p>
-        <div className="mt-5 flex justify-end gap-3">
-          <Button variant="secondary" size="sm" onClick={() => setDeleteTarget(null)}>Cancel</Button>
-          <Button variant="danger" size="sm" loading={deleteProgramme.isPending} onClick={() => deleteTarget && handleDelete(deleteTarget)}>
-            Remove
-          </Button>
-        </div>
-      </Modal>
+      <ConfirmSheet
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        title="Remove Programme?"
+        description={<>Remove <strong>{deleteTarget?.name}</strong>? Students already assigned this programme keep the name; only future assignments are affected.</>}
+        confirmLabel="Remove"
+        loading={deleteProgramme.isPending}
+        onConfirm={() => deleteTarget && handleDelete(deleteTarget)}
+      />
     </div>
   );
 }
@@ -1231,7 +1224,7 @@ function HousesSection({ isAdmin }: { isAdmin: boolean }) {
         </div>
       )}
 
-      <Modal open={formOpen} onClose={() => setFormOpen(false)} title={editTarget ? "Edit House" : "Add House"} size="sm">
+      <Drawer open={formOpen} onClose={() => setFormOpen(false)} title={editTarget ? "Edit House" : "Add House"} width="md">
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
           <Input
             id="house_name"
@@ -1272,19 +1265,17 @@ function HousesSection({ isAdmin }: { isAdmin: boolean }) {
             <Button type="submit" loading={isSubmitting}>{editTarget ? "Save Changes" : "Add House"}</Button>
           </div>
         </form>
-      </Modal>
+      </Drawer>
 
-      <Modal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="Remove House?" size="sm">
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          Remove <strong>{deleteTarget?.name}</strong>? Students already assigned this house keep the name; only future assignments are affected.
-        </p>
-        <div className="mt-5 flex justify-end gap-3">
-          <Button variant="secondary" size="sm" onClick={() => setDeleteTarget(null)}>Cancel</Button>
-          <Button variant="danger" size="sm" loading={deleteHouse.isPending} onClick={() => deleteTarget && handleDelete(deleteTarget)}>
-            Remove
-          </Button>
-        </div>
-      </Modal>
+      <ConfirmSheet
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        title="Remove House?"
+        description={<>Remove <strong>{deleteTarget?.name}</strong>? Students already assigned this house keep the name; only future assignments are affected.</>}
+        confirmLabel="Remove"
+        loading={deleteHouse.isPending}
+        onConfirm={() => deleteTarget && handleDelete(deleteTarget)}
+      />
     </div>
   );
 }

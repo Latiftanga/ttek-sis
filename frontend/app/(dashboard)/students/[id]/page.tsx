@@ -17,9 +17,9 @@ import { formatDate, getInitials, getApiError, capitalize } from "@/lib/utils";
 import Button from "@/components/ui/Button";
 import Badge, { statusBadge } from "@/components/ui/Badge";
 import Drawer from "@/components/ui/Drawer";
-import Modal from "@/components/ui/Modal";
+import ConfirmSheet from "@/components/ui/ConfirmSheet";
 import StudentForm from "@/components/students/StudentForm";
-import AddContactModal from "@/components/students/AddContactModal";
+import AddContactDrawer from "@/components/students/AddContactDrawer";
 
 function AvatarCircle({ student }: { student: Student }) {
   const initials = getInitials(student.first_name, student.last_name);
@@ -454,30 +454,22 @@ export default function StudentDetailPage() {
       </Drawer>
 
       {/* add contact modal */}
-      <AddContactModal
+      <AddContactDrawer
         open={addContactOpen}
         onClose={() => setAddContactOpen(false)}
         studentId={id}
       />
 
       {/* delete confirmation */}
-      <Modal open={confirmDelete} onClose={() => setConfirmDelete(false)} title="Delete Student?" size="sm">
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          This will permanently delete{" "}
-          <strong>
-            {student.first_name} {student.last_name}
-          </strong>{" "}
-          and all their records. This cannot be undone.
-        </p>
-        <div className="mt-5 flex justify-end gap-3">
-          <Button variant="secondary" size="sm" onClick={() => setConfirmDelete(false)}>
-            Cancel
-          </Button>
-          <Button variant="danger" size="sm" loading={deleteStudent.isPending} onClick={handleDelete}>
-            Delete
-          </Button>
-        </div>
-      </Modal>
+      <ConfirmSheet
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        title="Delete Student?"
+        description={<>This will permanently delete <strong>{student.first_name} {student.last_name}</strong> and all their records. This cannot be undone.</>}
+        confirmLabel="Delete"
+        loading={deleteStudent.isPending}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

@@ -5,7 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import toast from "react-hot-toast";
 import { Search } from "lucide-react";
-import Modal from "@/components/ui/Modal";
+import Drawer from "@/components/ui/Drawer";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
@@ -26,7 +26,7 @@ interface Props {
   onClose: () => void;
 }
 
-export default function EnrollStudentModal({ open, classId, onClose }: Props) {
+export default function EnrollStudentDrawer({ open, classId, onClose }: Props) {
   const [search, setSearch]                   = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selected, setSelected]               = useState<Student | null>(null);
@@ -82,7 +82,7 @@ export default function EnrollStudentModal({ open, classId, onClose }: Props) {
   }
 
   return (
-    <Modal open={open} onClose={handleClose} title="Enroll Student" size="sm">
+    <Drawer open={open} onClose={handleClose} title="Enroll Student" width="md">
       {!selected ? (
         <div className="space-y-3">
           <div className="relative">
@@ -188,6 +188,6 @@ export default function EnrollStudentModal({ open, classId, onClose }: Props) {
           </div>
         </form>
       )}
-    </Modal>
+    </Drawer>
   );
 }

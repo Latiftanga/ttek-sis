@@ -32,7 +32,7 @@ import { getApiError, getInitials, formatDate, cn } from "@/lib/utils";
 import type { GradebookEntry } from "@/lib/api";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
-import Modal from "@/components/ui/Modal";
+import Drawer from "@/components/ui/Drawer";
 import Input from "@/components/ui/Input";
 import Textarea from "@/components/ui/Textarea";
 
@@ -582,7 +582,7 @@ function EditScoreModal({
   }
 
   return (
-    <Modal open onClose={onClose} title={`Edit score — ${fullName}`} size="sm">
+    <Drawer open onClose={onClose} title={`Edit score — ${fullName}`} width="md">
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
         <p className="text-xs text-gray-500 dark:text-gray-400">
           Current:{" "}
@@ -661,7 +661,7 @@ function EditScoreModal({
           </Button>
         </div>
       </form>
-    </Modal>
+    </Drawer>
   );
 }
 

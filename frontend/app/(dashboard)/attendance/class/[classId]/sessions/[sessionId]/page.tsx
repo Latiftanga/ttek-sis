@@ -27,7 +27,7 @@ import {
 } from "@/lib/hooks/useAttendance";
 import { getApiError, getInitials, formatDate, cn } from "@/lib/utils";
 import type { AttendanceStatus, AttendanceRecord } from "@/lib/api";
-import Modal from "@/components/ui/Modal";
+import Drawer from "@/components/ui/Drawer";
 import Button from "@/components/ui/Button";
 import Select from "@/components/ui/Select";
 import Textarea from "@/components/ui/Textarea";
@@ -332,7 +332,7 @@ function EditRecordModal({
   }
 
   return (
-    <Modal open onClose={onClose} title={`Edit attendance — ${studentName}`} size="sm">
+    <Drawer open onClose={onClose} title={`Edit attendance — ${studentName}`} width="md">
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
         <p className="text-xs text-gray-500 dark:text-gray-400">
           Current status:{" "}
@@ -379,7 +379,7 @@ function EditRecordModal({
           </Button>
         </div>
       </form>
-    </Modal>
+    </Drawer>
   );
 }
 

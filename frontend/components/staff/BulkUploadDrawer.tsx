@@ -3,7 +3,7 @@ import { useRef, useState } from "react";
 import { Upload, FileSpreadsheet, Download, CheckCircle2, XCircle } from "lucide-react";
 import toast from "react-hot-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import Modal from "@/components/ui/Modal";
+import Drawer from "@/components/ui/Drawer";
 import Button from "@/components/ui/Button";
 import { staffApi, type StaffBulkUploadResult } from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
@@ -77,7 +77,7 @@ export default function StaffBulkUploadModal({ open, onClose }: Props) {
   }
 
   return (
-    <Modal open={open} onClose={handleClose} title="Bulk Upload Staff" size="lg">
+    <Drawer open={open} onClose={handleClose} title="Bulk Upload Staff" width="xl">
       <div className="space-y-5">
 
         {/* template download hint */}
@@ -216,6 +216,6 @@ export default function StaffBulkUploadModal({ open, onClose }: Props) {
           )}
         </div>
       </div>
-    </Modal>
+    </Drawer>
   );
 }

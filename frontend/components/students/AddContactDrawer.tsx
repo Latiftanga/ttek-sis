@@ -5,7 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import toast from "react-hot-toast";
 import { Plus, Phone, ShieldCheck, MessageSquare, Heart, AlertTriangle } from "lucide-react";
-import Modal from "@/components/ui/Modal";
+import Drawer from "@/components/ui/Drawer";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import Textarea from "@/components/ui/Textarea";
@@ -148,7 +148,7 @@ export default function AddContactModal({ open, onClose, studentId }: AddContact
   const noContactMethod = !phone && !email;
 
   return (
-    <Modal open={open} onClose={handleClose} title="Add Guardian / Contact" size="md">
+    <Drawer open={open} onClose={handleClose} title="Add Guardian / Contact" width="lg">
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
 
         {/* Identity */}
@@ -307,6 +307,6 @@ export default function AddContactModal({ open, onClose, studentId }: AddContact
           </Button>
         </div>
       </form>
-    </Modal>
+    </Drawer>
   );
 }
