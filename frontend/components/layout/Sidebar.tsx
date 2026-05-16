@@ -13,6 +13,7 @@ import {
   BookOpen,
   CalendarCheck,
   ClipboardList,
+  Building2,
   LogOut,
   X,
 } from "lucide-react";
@@ -24,6 +25,7 @@ const navItems = [
   { href: "/academic",    label: "Academic",    icon: BookOpen },
   { href: "/attendance",  label: "Attendance",  icon: CalendarCheck },
   { href: "/assessments", label: "Assessments", icon: ClipboardList },
+  { href: "/school",      label: "School",      icon: Building2 },
 ];
 
 interface SidebarProps {

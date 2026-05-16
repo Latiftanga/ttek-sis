@@ -7,7 +7,7 @@ import toast from "react-hot-toast";
 import {
   BookOpen, CalendarDays, School, ChevronDown, ChevronRight,
   Plus, Pencil, CheckCircle2, BookMarked, Trash2, ArrowRight,
-  Layers, Shield,
+  Layers,
 } from "lucide-react";
 import Link from "next/link";
 import Button from "@/components/ui/Button";
@@ -22,26 +22,24 @@ import { formatDate, getApiError, capitalize } from "@/lib/utils";
 import { useAuthStore } from "@/lib/store";
 import {
   useAcademicYears, useTerms, useClasses, useSubjects,
-  useSchoolProgrammes, useSchoolHouses,
+  useSchoolProgrammes,
   useCreateYear, useUpdateYear, useSetCurrentYear,
   useCreateTerm, useUpdateTerm, useSetCurrentTerm,
   useCreateClass,
   useCreateSubject, useDeleteSubject,
   useCreateProgramme, useUpdateProgramme, useDeleteProgramme,
-  useCreateHouse, useUpdateHouse, useDeleteHouse,
   useUpdateSubject,
   type AcademicYear, type Term, type Class, type Subject,
-  type SchoolProgramme, type SchoolHouse,
+  type SchoolProgramme,
 } from "@/lib/hooks/useAcademic";
 
 // ── Tabs ──────────────────────────────────────────────────────────────────
 
 const TABS = [
   { key: "calendar",   label: "Academic Calendar", icon: CalendarDays },
+  { key: "programmes", label: "Programmes",         icon: Layers },
   { key: "classes",    label: "Classes",            icon: School },
   { key: "subjects",   label: "Subjects",           icon: BookMarked },
-  { key: "programmes", label: "Programmes",         icon: Layers },
-  { key: "houses",     label: "Houses",             icon: Shield },
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
 
@@ -115,14 +113,6 @@ const programmeSchema = z.object({
 });
 type ProgrammeValues = z.infer<typeof programmeSchema>;
 
-// ── House form schema ─────────────────────────────────────────────────────
-
-const houseSchema = z.object({
-  name:  z.string().min(1, "Name is required"),
-  color: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Must be a valid hex colour e.g. #3b82f6").optional().or(z.literal("")),
-});
-type HouseValues = z.infer<typeof houseSchema>;
-
 // ── Subject form schema ───────────────────────────────────────────────────
 
 const subjectSchema = z.object({
@@ -137,7 +127,7 @@ type SubjectValues = z.infer<typeof subjectSchema>;
 // ═════════════════════════════════════════════════════════════════════════
 
 export default function AcademicPage() {
-  const [tab, setTab] = useState<TabKey>("classes");
+  const [tab, setTab] = useState<TabKey>("calendar");
   const { user, school } = useAuthStore();
   const isAdmin = user?.role === "school_admin" || user?.role === "headteacher";
   const schoolType = school?.school_type ?? "basic";
@@ -173,10 +163,9 @@ export default function AcademicPage() {
       </div>
 
       {tab === "calendar"   && <CalendarSection    isAdmin={isAdmin} />}
+      {tab === "programmes" && <ProgrammesSection  isAdmin={isAdmin} />}
       {tab === "classes"    && <ClassesSection     isAdmin={isAdmin} schoolType={schoolType} />}
       {tab === "subjects"   && <SubjectsSection    isAdmin={isAdmin} schoolType={schoolType} />}
-      {tab === "programmes" && <ProgrammesSection  isAdmin={isAdmin} />}
-      {tab === "houses"     && <HousesSection      isAdmin={isAdmin} />}
     </div>
   );
 }
@@ -1114,171 +1103,6 @@ function ProgrammesSection({ isAdmin }: { isAdmin: boolean }) {
   );
 }
 
-// ═════════════════════════════════════════════════════════════════════════
-// HOUSES SECTION
-// ═════════════════════════════════════════════════════════════════════════
-
-function HousesSection({ isAdmin }: { isAdmin: boolean }) {
-  const { data: houses = [], isLoading } = useSchoolHouses();
-  const createHouse = useCreateHouse();
-  const updateHouse = useUpdateHouse();
-  const deleteHouse = useDeleteHouse();
-
-  const [formOpen, setFormOpen]         = useState(false);
-  const [editTarget, setEditTarget]     = useState<SchoolHouse | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<SchoolHouse | null>(null);
-
-  const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } =
-    useForm<HouseValues>({ resolver: zodResolver(houseSchema) });
-
-  const colorValue = watch("color");
-
-  function openAdd() {
-    reset({ name: "", color: "" });
-    setEditTarget(null);
-    setFormOpen(true);
-  }
-
-  function openEdit(h: SchoolHouse) {
-    reset({ name: h.name, color: h.color ?? "" });
-    setEditTarget(h);
-    setFormOpen(true);
-  }
-
-  async function onSubmit(values: HouseValues) {
-    const color = values.color || undefined;
-    try {
-      if (editTarget) {
-        await updateHouse.mutateAsync({ id: editTarget.id, name: values.name, color });
-        toast.success("House updated");
-      } else {
-        await createHouse.mutateAsync({ name: values.name, color });
-        toast.success(`"${values.name}" added`);
-      }
-      setFormOpen(false);
-    } catch (err) {
-      toast.error(getApiError(err));
-    }
-  }
-
-  async function handleDelete(h: SchoolHouse) {
-    try {
-      await deleteHouse.mutateAsync(h.id);
-      toast.success(`"${h.name}" removed`);
-      setDeleteTarget(null);
-    } catch (err) {
-      toast.error(getApiError(err));
-    }
-  }
-
-  if (isLoading) return <div className="h-48 animate-pulse rounded-xl bg-gray-100 dark:bg-gray-800" />;
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Houses</h2>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">School houses for student grouping</p>
-        </div>
-        {isAdmin && (
-          <Button size="sm" onClick={openAdd}>
-            <Plus className="h-4 w-4" />Add House
-          </Button>
-        )}
-      </div>
-
-      {houses.length === 0 ? (
-        <EmptyState
-          message="No houses configured. Leave empty to let the house field accept free text."
-          action={isAdmin ? { label: "Add House", onClick: openAdd } : undefined}
-        />
-      ) : (
-        <div className="rounded-xl border border-gray-200 bg-white divide-y divide-gray-100 dark:border-gray-700 dark:bg-gray-900 dark:divide-gray-800">
-          {houses.map((h) => (
-            <div key={h.id} className="flex items-center gap-3 px-5 py-3">
-              <span
-                className="h-3.5 w-3.5 shrink-0 rounded-full border border-gray-200 dark:border-gray-700"
-                style={{ backgroundColor: h.color ?? "#e5e7eb" }}
-              />
-              <span className="flex-1 text-sm font-medium text-gray-900 dark:text-white">{h.name}</span>
-              {isAdmin && (
-                <div className="flex items-center gap-1 shrink-0">
-                  <button
-                    onClick={() => openEdit(h)}
-                    className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
-                    aria-label={`Edit ${h.name}`}
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    onClick={() => setDeleteTarget(h)}
-                    className="rounded p-1 text-gray-300 hover:bg-red-50 hover:text-red-500 dark:text-gray-600 dark:hover:bg-red-950/40 dark:hover:text-red-400"
-                    aria-label={`Remove ${h.name}`}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      <Drawer open={formOpen} onClose={() => setFormOpen(false)} title={editTarget ? "Edit House" : "Add House"} width="md">
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
-          <Input
-            id="house_name"
-            label="Name *"
-            placeholder="e.g. Unity House"
-            error={errors.name?.message}
-            {...register("name")}
-          />
-          <div className="space-y-1">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Colour
-            </label>
-            <div className="flex items-center gap-3">
-              <input
-                type="color"
-                aria-label="Pick a colour"
-                className="h-10 w-16 cursor-pointer rounded border border-gray-200 bg-white p-1 dark:border-gray-700 dark:bg-gray-900"
-                value={colorValue || "#6b7280"}
-                onChange={(e) => setValue("color", e.target.value, { shouldValidate: true })}
-              />
-              {colorValue ? (
-                <button
-                  type="button"
-                  onClick={() => setValue("color", "", { shouldValidate: true })}
-                  className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                >
-                  Clear colour
-                </button>
-              ) : (
-                <span className="text-sm text-gray-400 dark:text-gray-500">
-                  Tap to choose
-                </span>
-              )}
-            </div>
-          </div>
-          <div className="flex justify-end gap-3 border-t border-gray-100 pt-4 dark:border-gray-800">
-            <Button type="button" variant="secondary" onClick={() => setFormOpen(false)}>Cancel</Button>
-            <Button type="submit" loading={isSubmitting}>{editTarget ? "Save Changes" : "Add House"}</Button>
-          </div>
-        </form>
-      </Drawer>
-
-      <ConfirmSheet
-        open={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-        title="Remove House?"
-        description={<>Remove <strong>{deleteTarget?.name}</strong>? Students already assigned this house keep the name; only future assignments are affected.</>}
-        confirmLabel="Remove"
-        loading={deleteHouse.isPending}
-        onConfirm={() => deleteTarget && handleDelete(deleteTarget)}
-      />
-    </div>
-  );
-}
 
 // ── Shared empty state ────────────────────────────────────────────────────
 
