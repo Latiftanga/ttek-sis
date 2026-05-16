@@ -160,9 +160,24 @@ async def open_session(
 
     # Tenant boundary — every referenced resource must belong to this school
     await _assert_class_in_school(body.class_id, school.id, db)
-    await _assert_term_in_school(body.term_id, school.id, db)
+    term_res = await db.execute(
+        select(Term).where(Term.id == body.term_id, Term.school_id == school.id)
+    )
+    term = term_res.scalar_one_or_none()
+    if not term:
+        raise HTTPException(404, "Term not found")
     if body.subject_id:
         await _assert_subject_in_school(body.subject_id, school.id, db)
+
+    # Session date must fall within the chosen term — otherwise the records
+    # get filed against a term that didn't actually cover that day.
+    if not (term.start_date <= body.date <= term.end_date):
+        raise HTTPException(
+            400,
+            f"Date {body.date} is outside the term '{term.name}' "
+            f"({term.start_date} to {term.end_date}). "
+            f"Pick a date within the term, or choose a different term.",
+        )
 
     # Check no duplicate session for same class/date/type/subject
     dup_query = select(AttendanceSession).where(

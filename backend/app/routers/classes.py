@@ -187,9 +187,48 @@ async def update_term(
     _: WriteRole, school: CurrentSchool, db: DB,
 ):
     term = await _get_term(term_id, school.id, db)
+    updates = body.model_dump(exclude_unset=True)
+
+    # If either date is being changed, re-validate against the parent year
+    # and against sibling terms — same invariants enforced at create time.
+    new_start = updates.get("start_date", term.start_date)
+    new_end = updates.get("end_date", term.end_date)
+    if "start_date" in updates or "end_date" in updates:
+        if new_end <= new_start:
+            raise HTTPException(400, "end_date must be after start_date")
+
+        year_res = await db.execute(
+            select(AcademicYear).where(
+                AcademicYear.id == term.academic_year_id,
+                AcademicYear.school_id == school.id,
+            )
+        )
+        year = year_res.scalar_one()
+        if new_start < year.start_date or new_end > year.end_date:
+            raise HTTPException(
+                400,
+                f"Term dates must stay within the academic year "
+                f"({year.start_date} to {year.end_date}).",
+            )
+
+        overlap = await db.execute(
+            select(Term).where(
+                Term.school_id == school.id,
+                Term.academic_year_id == term.academic_year_id,
+                Term.id != term.id,
+                Term.start_date < new_end,
+                Term.end_date > new_start,
+            )
+        )
+        if overlap.scalar_one_or_none():
+            raise HTTPException(
+                400,
+                "These dates overlap with another term in this academic year.",
+            )
+
     if body.is_current is True:
         await _unset_current_term(school.id, db)
-    for field, value in body.model_dump(exclude_unset=True).items():
+    for field, value in updates.items():
         setattr(term, field, value)
     await db.commit()
     await db.refresh(term)
@@ -1014,7 +1053,15 @@ async def promote_student(
         raise HTTPException(400, f"Cannot promote — status is '{enrollment.status}'")
 
     await _get_class(body.to_class_id, school.id, db)
-    await _get_year(body.academic_year_id, school.id, db)
+    year = await _get_year(body.academic_year_id, school.id, db)
+
+    if not (year.start_date <= body.start_date <= year.end_date):
+        raise HTTPException(
+            400,
+            f"Start date {body.start_date} is outside the academic year "
+            f"'{year.name}' ({year.start_date} to {year.end_date}). "
+            f"Use the day this student moves into the new class.",
+        )
 
     exists = await db.execute(
         select(Enrollment).where(
@@ -1056,7 +1103,15 @@ async def repeat_student(
     if enrollment.status != "active":
         raise HTTPException(400, f"Cannot repeat — status is '{enrollment.status}'")
 
-    await _get_year(body.academic_year_id, school.id, db)
+    year = await _get_year(body.academic_year_id, school.id, db)
+
+    if not (year.start_date <= body.start_date <= year.end_date):
+        raise HTTPException(
+            400,
+            f"Start date {body.start_date} is outside the academic year "
+            f"'{year.name}' ({year.start_date} to {year.end_date}). "
+            f"Use the day the repeat year actually begins for this student.",
+        )
 
     enrollment.status = "repeated"
     enrollment.end_date = body.start_date
@@ -1134,7 +1189,15 @@ async def bulk_promote(
 ):
     await _get_class(body.from_class_id, school.id, db)
     await _get_class(body.to_class_id, school.id, db)
-    await _get_year(body.academic_year_id, school.id, db)
+    year = await _get_year(body.academic_year_id, school.id, db)
+
+    if not (year.start_date <= body.start_date <= year.end_date):
+        raise HTTPException(
+            400,
+            f"Start date {body.start_date} is outside the academic year "
+            f"'{year.name}' ({year.start_date} to {year.end_date}). "
+            f"Use the day the new year actually begins for these students.",
+        )
 
     current_year_res = await db.execute(
         select(AcademicYear).where(
@@ -1214,7 +1277,15 @@ async def demote_student(
         raise HTTPException(400, f"Cannot demote — status is '{enrollment.status}'")
 
     await _get_class(body.to_class_id, school.id, db)
-    await _get_year(body.academic_year_id, school.id, db)
+    year = await _get_year(body.academic_year_id, school.id, db)
+
+    if not (year.start_date <= body.start_date <= year.end_date):
+        raise HTTPException(
+            400,
+            f"Start date {body.start_date} is outside the academic year "
+            f"'{year.name}' ({year.start_date} to {year.end_date}). "
+            f"Use the day this student moves into the new class.",
+        )
 
     # Exclude this enrollment itself — it'll be marked demoted below.
     # Same-year demotion (most common case) must not trip the conflict check.
