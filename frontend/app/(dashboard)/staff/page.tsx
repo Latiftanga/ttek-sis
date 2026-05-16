@@ -144,8 +144,8 @@ export default function StaffPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative min-w-[200px] flex-1 max-w-sm">
+      <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center">
+        <div className="relative flex-1 md:min-w-[200px]">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <input
             type="search"
@@ -159,19 +159,19 @@ export default function StaffPage() {
         <select
           value={roleFilter}
           onChange={(e) => { setRoleFilter(e.target.value); setPage(0); }}
-          className="h-9 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-700 focus:border-[var(--brand)] focus:outline-none focus:ring-2 focus:ring-[var(--brand)]/20 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+          className="h-9 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-700 focus:border-[var(--brand)] focus:outline-none focus:ring-2 focus:ring-[var(--brand)]/20 md:w-auto dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
         >
           {ROLE_FILTERS.map((r) => (
             <option key={r.key} value={r.key}>{r.label}</option>
           ))}
         </select>
-        <div className="flex overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+        <div className="flex w-full overflow-hidden rounded-lg border border-gray-200 bg-white md:w-auto dark:border-gray-700 dark:bg-gray-800">
           {STATUS_TABS.map(({ key, label }) => (
             <button
               key={key}
               onClick={() => { setStatusTab(key); setPage(0); }}
               aria-pressed={statusTab === key}
-              className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+              className={`flex-1 px-3 py-1.5 text-xs font-medium transition-colors md:flex-none ${
                 statusTab === key
                   ? "bg-[var(--brand)] text-white"
                   : "text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-700"
