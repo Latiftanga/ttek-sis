@@ -326,7 +326,7 @@ async def delete_assessment(
     """
     Delete a draft assessment along with its scores and any draft edit logs.
     Published assessments must be unpublished first — this protects the
-    WAEC-grade audit trail from accidental wipes.
+    audit trail from accidental wipes.
     """
     assessment = await _get_assessment(assessment_id, school.id, db)
     if assessment.is_published:

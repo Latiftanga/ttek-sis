@@ -18,7 +18,7 @@ LEVEL_GROUPS = {
     "shs":       {"label": "Senior High School", "short_name": "SHS", "levels": [1, 2, 3]},
 }
 
-# Basic 7-9 → BECE grading (CA submitted to WAEC)
+# Basic 7-9 → BECE grading
 BASIC_BECE_LEVELS = [7, 8, 9]
 
 

@@ -56,7 +56,7 @@ async def copy_system_programmes_to_school(
 DEFAULTS = [
     {
         "name": "WASSCE",
-        "description": "WAEC standard grading scale for SHS (WASSCE)",
+        "description": "Standard grading scale for SHS (WASSCE)",
         "bands": [
             # min, max,  label, remark,      order
             (75, 100, "A1", "Excellent",  1),
@@ -72,7 +72,7 @@ DEFAULTS = [
     },
     {
         "name": "BECE",
-        "description": "WAEC standard grading scale for Basic 7-9 (BECE)",
+        "description": "Standard grading scale for Basic 7-9 (BECE)",
         "bands": [
             # min, max, label, remark,    order
             (90, 100, "1", "Highest",      1),

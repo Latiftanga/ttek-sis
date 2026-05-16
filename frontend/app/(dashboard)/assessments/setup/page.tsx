@@ -515,7 +515,7 @@ function ScalesTab() {
             Grading scales
           </h2>
           <p className="text-xs text-gray-400 dark:text-gray-500">
-            Define how percentages map to letter grades (e.g. WAEC A1, B2, …).
+            Define how percentages map to letter grades (e.g. A1, B2, …).
           </p>
         </div>
         <Button size="sm" onClick={() => setAddingScale(true)}>

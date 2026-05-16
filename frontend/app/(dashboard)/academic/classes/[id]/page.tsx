@@ -1278,8 +1278,6 @@ export default function ClassDetailPage() {
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-xl font-bold text-gray-900 dark:text-white">{class_.name}</h1>
-              {class_.is_bece_level  && <Badge variant="yellow">BECE</Badge>}
-              {class_.is_wassce_level && <Badge variant="blue">WASSCE</Badge>}
               {!class_.is_active     && <Badge variant="gray">Inactive</Badge>}
             </div>
             <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500 dark:text-gray-400">

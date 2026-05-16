@@ -68,7 +68,7 @@ class AssessmentCategory(Base):
     weight          = Column(Numeric(5, 2), nullable=False)
     max_score       = Column(Numeric(5, 2), nullable=False, default=100)
     is_ca           = Column(Boolean, default=True)
-    # True  → counts toward WAEC CA submission
+    # True  → counts toward continuous assessment
     # False → school internal only (e.g. End of Term Exam)
     allows_multiple = Column(Boolean, default=True)
     # True  → many instances allowed (Class Test 1, 2, 3 ...)
@@ -154,7 +154,7 @@ class AssessmentScore(Base):
     is_absent      = Column(Boolean, default=False)
     remarks        = Column(Text)
 
-    # Audit trail — critical for WAEC trust later
+    # Audit trail — critical for downstream trust
     recorded_by    = Column(UUID(as_uuid=True),
                            ForeignKey("users.id"),
                            nullable=False)
@@ -182,7 +182,6 @@ class TermResult(Base):
     Computed at end of term per student per subject.
     Never entered manually — always computed from AssessmentScores.
     This is what appears on the report card.
-    This is what WAEC will receive as CA in Phase 3.
     """
     __tablename__ = "term_results"
 
@@ -220,7 +219,7 @@ class TermResult(Base):
 
     is_computed   = Column(Boolean, default=False)
     is_submitted  = Column(Boolean, default=False)
-    # True → locked, submitted to WAEC (Phase 3)
+    # True → locked after external submission
 
     computed_at   = Column(DateTime(timezone=True))
     computed_by   = Column(UUID(as_uuid=True), ForeignKey("users.id"))
@@ -232,7 +231,7 @@ class ScoreEditLog(Base):
     """
     Immutable audit log — one row per score change.
     Never deleted. Never updated. Append only.
-    This is what makes the system trustworthy for WAEC later.
+    This is what makes the system auditable downstream.
     """
     __tablename__ = "score_edit_logs"
 
