@@ -285,8 +285,8 @@ export default function StudentsPage() {
       </div>
 
       {/* filters */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-        <div className="relative flex-1 sm:min-w-[200px]">
+      <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center">
+        <div className="relative flex-1 md:min-w-[200px]">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <input
             type="search"
@@ -297,13 +297,26 @@ export default function StudentsPage() {
             className="h-9 w-full rounded-lg border border-gray-300 bg-white pl-9 pr-3 text-sm focus:border-[var(--brand)] focus:outline-none focus:ring-2 focus:ring-[var(--brand)]/20 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
           />
         </div>
-        <div className="flex w-full overflow-hidden rounded-lg border border-gray-200 bg-white sm:w-auto dark:border-gray-700 dark:bg-gray-800">
+
+        {/* Mobile: compact select — avoids 5-tab cramping on small screens */}
+        <select
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+          className="md:hidden h-9 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-700 focus:border-[var(--brand)] focus:outline-none focus:ring-2 focus:ring-[var(--brand)]/20 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+        >
+          {STATUS_TABS.map(({ key, label }) => (
+            <option key={key} value={key}>{label}</option>
+          ))}
+        </select>
+
+        {/* Desktop: pill tab bar */}
+        <div className="hidden md:flex overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
           {STATUS_TABS.map(({ key, label }) => (
             <button
               key={key}
               onClick={() => setStatus(key)}
               aria-pressed={status === key}
-              className={`flex-1 px-3 py-1.5 text-xs font-medium transition-colors sm:flex-none ${
+              className={`flex-none px-3 py-1.5 text-xs font-medium transition-colors ${
                 status === key
                   ? "bg-[var(--brand)] text-white"
                   : "text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-700"
@@ -347,7 +360,7 @@ export default function StudentsPage() {
 
       {/* table */}
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
-        <div className="hidden overflow-x-auto sm:block">
+        <div className="hidden overflow-x-auto md:block">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/60">
@@ -478,7 +491,7 @@ export default function StudentsPage() {
         </div>
 
         {/* mobile card list */}
-        <div className="sm:hidden divide-y divide-gray-100 dark:divide-gray-700">
+        <div className="md:hidden divide-y divide-gray-100 dark:divide-gray-700">
           {isLoading
             ? Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="flex animate-pulse items-center gap-3 p-4" aria-hidden="true">

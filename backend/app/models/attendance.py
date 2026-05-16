@@ -1,7 +1,7 @@
 import uuid
 from sqlalchemy import (
     Boolean, Column, String, Text,
-    Date, DateTime, Integer, ForeignKey, func
+    Date, DateTime, Integer, ForeignKey, UniqueConstraint, func
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -119,6 +119,9 @@ class AttendanceRecord(Base):
     Corrections go through PATCH with mandatory edit_reason.
     """
     __tablename__ = "attendance_records"
+    __table_args__ = (
+        UniqueConstraint("session_id", "student_id", name="uq_attendance_session_student"),
+    )
 
     id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     school_id       = Column(UUID(as_uuid=True),

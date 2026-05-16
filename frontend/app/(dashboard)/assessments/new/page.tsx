@@ -34,7 +34,7 @@ const formSchema = z.object({
   subject_id: z.string().min(1, "Pick a subject"),
   category_id: z.string().min(1, "Pick a mode"),
   term_id: z.string().min(1, "Pick a term"),
-  title: z.string().trim().min(1, "Give it a title"),
+  description: z.string().optional(),
   date_administered: z.string().optional(),
   max_score: z.coerce
     .number({ message: "Must be a number" })
@@ -75,7 +75,7 @@ export default function NewAssessmentPage() {
       subject_id: "",
       category_id: "",
       term_id: "",
-      title: "",
+      description: "",
       date_administered: todayIso,
       max_score: 100,
     },
@@ -88,8 +88,9 @@ export default function NewAssessmentPage() {
     }
   }, [currentTerm?.id, setValue]);
 
-  // When category changes, pre-fill max_score from category.max_score (decision #4)
+  // When category changes, pre-fill max_score from category.max_score
   const selectedCategoryId = watch("category_id");
+  const selectedDate = watch("date_administered");
   useEffect(() => {
     if (!selectedCategoryId) return;
     const cat = categories.find((c) => c.id === selectedCategoryId);
@@ -98,6 +99,14 @@ export default function NewAssessmentPage() {
     }
   }, [selectedCategoryId, categories, setValue]);
 
+  // Build the live preview of the auto-generated assessment name
+  const selectedCategory = categories.find((c) => c.id === selectedCategoryId);
+  const previewName = selectedCategory
+    ? selectedDate
+      ? `${selectedCategory.name} – ${new Date(selectedDate + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" })}`
+      : selectedCategory.name
+    : null;
+
   async function onSubmit(values: FormValues) {
     try {
       const created = await create.mutateAsync({
@@ -105,11 +114,11 @@ export default function NewAssessmentPage() {
         subject_id: values.subject_id,
         category_id: values.category_id,
         term_id: values.term_id,
-        title: values.title.trim(),
+        description: values.description?.trim() || null,
         date_administered: values.date_administered || null,
         max_score: values.max_score,
       });
-      toast.success(`"${created.title}" created`);
+      toast.success("Assessment created");
       router.push(`/assessments/${created.id}`);
     } catch (err) {
       toast.error(getApiError(err, "Could not create the assessment. Please try again."));
@@ -203,15 +212,14 @@ export default function NewAssessmentPage() {
           ))}
         </Select>
 
-        <Input
-          id="title"
-          label="Title *"
-          placeholder="e.g. Class Test 1"
-          error={errors.title?.message}
-          {...register("title")}
-        />
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Input
+            id="date_administered"
+            label="Date"
+            type="date"
+            error={errors.date_administered?.message}
+            {...register("date_administered")}
+          />
           <Select
             id="term_id"
             label="Term *"
@@ -225,28 +233,48 @@ export default function NewAssessmentPage() {
               </option>
             ))}
           </Select>
+        </div>
 
-          <Input
-            id="date_administered"
-            label="Date"
-            type="date"
-            error={errors.date_administered?.message}
-            {...register("date_administered")}
-          />
+        {previewName && (
+          <div className="flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2.5 text-sm dark:border-blue-900/40 dark:bg-blue-950/30">
+            <span className="shrink-0 text-blue-400 dark:text-blue-500">Saved as</span>
+            <span className="font-medium text-blue-800 dark:text-blue-200">
+              {previewName}
+            </span>
+          </div>
+        )}
 
-          <Input
-            id="max_score"
-            label="Max score *"
-            type="number"
-            min={0}
-            step="0.5"
-            error={errors.max_score?.message}
-            {...register("max_score")}
+        <div>
+          <label
+            htmlFor="description"
+            className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300"
+          >
+            Description{" "}
+            <span className="font-normal text-gray-400 dark:text-gray-500">
+              (optional)
+            </span>
+          </label>
+          <textarea
+            id="description"
+            rows={2}
+            placeholder="e.g. Algebra I — Week 1–4 | Climate Change project"
+            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:placeholder-gray-500"
+            {...register("description")}
           />
         </div>
+
+        <Input
+          id="max_score"
+          label="Max score *"
+          type="number"
+          min={0}
+          step="0.5"
+          error={errors.max_score?.message}
+          {...register("max_score")}
+        />
         <p className="-mt-2 text-xs text-gray-400 dark:text-gray-500">
-          Max score pre-fills from the mode default and can be overridden for
-          this assessment.
+          Pre-fills from the mode default and can be overridden for this
+          assessment.
         </p>
 
         <div className="flex justify-end gap-3 border-t border-gray-100 pt-4 dark:border-gray-800">

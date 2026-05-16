@@ -248,20 +248,27 @@ export default function ScoreEntryPage() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <h1 className="text-lg font-semibold text-gray-900 dark:text-white">
-              {assessment.title}
+              {category?.name ?? "Assessment"}
+              {assessment.date_administered
+                ? ` – ${formatDate(assessment.date_administered)}`
+                : ""}
             </h1>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
               {class_?.name ?? "—"}
               {subject ? ` · ${subject.name}` : ""}
-              {category ? ` · ${category.name}` : ""}
             </p>
+            {assessment.description && (
+              <p className="mt-1 text-sm italic text-gray-400 dark:text-gray-500">
+                {assessment.description}
+              </p>
+            )}
             <p className="mt-1 flex items-center gap-3 text-xs text-gray-400 dark:text-gray-500">
-              <span className="inline-flex items-center gap-1">
-                <CalendarDays className="h-3 w-3" />
-                {assessment.date_administered
-                  ? formatDate(assessment.date_administered)
-                  : "Date not set"}
-              </span>
+              {!assessment.date_administered && (
+                <span className="inline-flex items-center gap-1">
+                  <CalendarDays className="h-3 w-3" />
+                  Date not set
+                </span>
+              )}
               <span>Out of {maxScore}</span>
             </p>
           </div>
@@ -308,9 +315,18 @@ export default function ScoreEntryPage() {
       {/* Roster */}
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
         <div className="border-b border-gray-100 px-4 py-3 dark:border-gray-800">
-          <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
-            Roster — out of {maxScore}
-          </p>
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
+              Roster — out of {maxScore}
+            </p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              <span className="font-semibold text-gray-700 dark:text-gray-200">
+                {gradebook.scores_entered}
+              </span>
+              {" / "}
+              {gradebook.total_students} scored
+            </p>
+          </div>
         </div>
         {entries.length === 0 ? (
           <div className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">
@@ -375,8 +391,8 @@ export default function ScoreEntryPage() {
         title="Delete this assessment?"
         description={
           <>
-            <strong>{assessment.title}</strong> and any draft scores will be
-            permanently removed. This cannot be undone.
+            This assessment and any draft scores will be permanently removed.
+            This cannot be undone.
           </>
         }
         confirmLabel="Delete"
@@ -579,7 +595,7 @@ function EditAssessmentDrawer({
   const schema = useMemo(
     () =>
       z.object({
-        title: z.string().trim().min(1, "Give it a title"),
+        description: z.string().optional(),
         date_administered: z.string().optional(),
         max_score: z.coerce
           .number({ message: "Must be a number" })
@@ -598,7 +614,7 @@ function EditAssessmentDrawer({
   } = useForm<Values>({
     resolver: zodResolver(schema),
     defaultValues: {
-      title: assessment.title,
+      description: assessment.description ?? "",
       date_administered: assessment.date_administered ?? "",
       max_score: Number(assessment.max_score),
     },
@@ -607,7 +623,7 @@ function EditAssessmentDrawer({
   useEffect(() => {
     if (open) {
       reset({
-        title: assessment.title,
+        description: assessment.description ?? "",
         date_administered: assessment.date_administered ?? "",
         max_score: Number(assessment.max_score),
       });
@@ -617,7 +633,7 @@ function EditAssessmentDrawer({
   async function onSubmit(values: Values) {
     try {
       await update.mutateAsync({
-        title: values.title.trim(),
+        description: values.description?.trim() || null,
         date_administered: values.date_administered || null,
         max_score: values.max_score,
       });
@@ -631,11 +647,12 @@ function EditAssessmentDrawer({
   return (
     <Drawer open={open} onClose={onClose} title="Edit assessment">
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
-        <Input
-          id="ea_title"
-          label="Title *"
-          error={errors.title?.message}
-          {...register("title")}
+        <Textarea
+          id="ea_description"
+          label="Description"
+          placeholder="e.g. Algebra I — Week 1–4"
+          rows={2}
+          {...register("description")}
         />
         <Input
           id="ea_date"

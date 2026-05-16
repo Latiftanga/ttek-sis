@@ -553,24 +553,17 @@ function ClassesSection({ isAdmin, schoolType }: { isAdmin: boolean; schoolType:
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Classes</h2>
-          <label className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
-            <input
-              type="checkbox"
-              className="h-3.5 w-3.5 accent-[var(--brand)]"
-              checked={showInactive}
-              onChange={(e) => setShowInactive(e.target.checked)}
-            />
-            Show inactive
-          </label>
-        </div>
-        {isAdmin && (
-          <Button size="sm" onClick={() => { setEditClass(null); setClassDrawer(true); }}>
-            <Plus className="h-4 w-4" />Add Class
-          </Button>
-        )}
+      <div className="flex items-center gap-3">
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Classes</h2>
+        <label className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+          <input
+            type="checkbox"
+            className="h-3.5 w-3.5 accent-[var(--brand)]"
+            checked={showInactive}
+            onChange={(e) => setShowInactive(e.target.checked)}
+          />
+          Show inactive
+        </label>
       </div>
 
       {/* Groups */}
@@ -647,6 +640,18 @@ function ClassesSection({ isAdmin, schoolType }: { isAdmin: boolean; schoolType:
           </div>
         );
       })}
+
+      {isAdmin && (
+        <div className="flex justify-end">
+          <button
+            onClick={() => { setEditClass(null); setClassDrawer(true); }}
+            className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+          >
+            <Plus className="h-4 w-4" />
+            Add class
+          </button>
+        </div>
+      )}
 
       {/* Class drawer */}
       <Drawer

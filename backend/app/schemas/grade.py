@@ -66,8 +66,8 @@ class AssessmentCreate(BaseModel):
     class_id:          UUID
     subject_id:        UUID
     term_id:           UUID
-    title:             str
-    date_administered: Optional[date]    = None
+    description:       Optional[str]    = None
+    date_administered: Optional[date]   = None
     max_score:         Decimal
 
     @field_validator("max_score")
@@ -77,16 +77,9 @@ class AssessmentCreate(BaseModel):
             raise ValueError("max_score must be greater than 0")
         return v
 
-    @field_validator("title")
-    @classmethod
-    def validate_title(cls, v):
-        if not v.strip():
-            raise ValueError("title cannot be empty")
-        return v.strip()
-
 
 class AssessmentUpdate(BaseModel):
-    title:             Optional[str]     = None
+    description:       Optional[str]     = None
     date_administered: Optional[date]    = None
     max_score:         Optional[Decimal] = None
 
@@ -98,8 +91,8 @@ class AssessmentResponse(BaseModel):
     class_id:          UUID
     subject_id:        UUID
     term_id:           UUID
-    title:             str
-    date_administered: Optional[date]     = None
+    description:       Optional[str]     = None
+    date_administered: Optional[date]    = None
     max_score:         Decimal
     is_published:      bool
     created_by:        UUID

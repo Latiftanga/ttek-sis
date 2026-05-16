@@ -1,7 +1,7 @@
 import uuid
 from sqlalchemy import (
     Boolean, Column, String, Text,
-    Numeric, Integer, ForeignKey, DateTime, Date, func
+    Numeric, Integer, ForeignKey, DateTime, Date, UniqueConstraint, Index, func, text
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -91,6 +91,18 @@ class Assessment(Base):
     e.g. "Class Test 1, Core Maths, JHS 2A, Term 1, 20 Sept 2024"
     """
     __tablename__ = "assessments"
+    __table_args__ = (
+        # Partial unique index — prevents the same category on the same date
+        # for the same class/subject/term. NULLs (undated) are excluded so
+        # that undated assessments don't collide at the DB level (the
+        # allows_multiple application check covers that path instead).
+        Index(
+            "uix_assessment_category_date",
+            "school_id", "class_id", "subject_id", "term_id", "category_id", "date_administered",
+            unique=True,
+            postgresql_where=text("date_administered IS NOT NULL"),
+        ),
+    )
 
     id                = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     school_id         = Column(UUID(as_uuid=True),
@@ -109,8 +121,8 @@ class Assessment(Base):
                               ForeignKey("terms.id"),
                               nullable=False)
 
-    title             = Column(String(150), nullable=False)
-    # "Class Test 1" | "Group Exercise — Climate Change"
+    description       = Column(Text, nullable=True)
+    # Optional teacher note: "Algebra I Week 1-4", "Climate Change project"
     date_administered = Column(Date, nullable=True)
     max_score         = Column(Numeric(5, 2), nullable=False)
 
@@ -137,6 +149,9 @@ class AssessmentScore(Base):
     Atomic unit — one row per student per assessment.
     """
     __tablename__ = "assessment_scores"
+    __table_args__ = (
+        UniqueConstraint("assessment_id", "student_id", name="uq_score_assessment_student"),
+    )
 
     id             = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     school_id      = Column(UUID(as_uuid=True),
@@ -184,6 +199,9 @@ class TermResult(Base):
     This is what appears on the report card.
     """
     __tablename__ = "term_results"
+    __table_args__ = (
+        UniqueConstraint("student_id", "subject_id", "term_id", name="uq_term_result"),
+    )
 
     id            = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     school_id     = Column(UUID(as_uuid=True),

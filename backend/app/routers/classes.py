@@ -422,35 +422,55 @@ async def create_class(
             f"Allowed: {school.available_level_groups}",
         )
 
+    resolved_programme = None
+    school_programme_id = None
     if body.programme:
-        # Frontend posts either the programme name ("Science") or its short
-        # code ("SCI") — match against either column. Check school-specific
-        # programmes first, then fall back to GES system programmes.
+        # Resolve by name or short_name; school-specific first, system fallback.
         prog_res = await db.execute(
             select(SchoolProgramme).where(
                 SchoolProgramme.school_id == school.id,
-                (SchoolProgramme.name == body.programme)
-                | (SchoolProgramme.short_name == body.programme),
+                or_(
+                    SchoolProgramme.name == body.programme,
+                    SchoolProgramme.short_name == body.programme,
+                ),
                 SchoolProgramme.is_active.is_(True),
             )
         )
-        if not prog_res.scalar_one_or_none():
+        sp = prog_res.scalar_one_or_none()
+        if not sp:
             sys_res = await db.execute(
                 select(SystemProgramme).where(
-                    (SystemProgramme.name == body.programme)
-                    | (SystemProgramme.short_name == body.programme),
+                    or_(
+                        SystemProgramme.name == body.programme,
+                        SystemProgramme.short_name == body.programme,
+                    ),
                     SystemProgramme.is_active.is_(True),
                 )
             )
-            if not sys_res.scalar_one_or_none():
+            sysp = sys_res.scalar_one_or_none()
+            if not sysp:
                 raise HTTPException(
                     400,
                     f"Programme '{body.programme}' not found. "
                     "Use a GES standard programme or add it in school settings.",
                 )
+            # Auto-promote the system programme into this school's list.
+            sp = SchoolProgramme(
+                school_id=school.id,
+                name=sysp.name,
+                short_name=sysp.short_name,
+                description=sysp.description,
+                order=sysp.order,
+                is_active=True,
+            )
+            db.add(sp)
+            await db.flush()
+        # Normalise: always store short_name (used by generate_name for "1SC A")
+        resolved_programme = sp.short_name or sp.name
+        school_programme_id = sp.id
 
     name = Class.generate_name(
-        body.level_group, body.level_number, body.stream, body.programme,
+        body.level_group, body.level_number, body.stream, resolved_programme,
     )
 
     exists = await db.execute(
@@ -464,7 +484,8 @@ async def create_class(
         level_group=body.level_group,
         level_number=body.level_number,
         stream=body.stream,
-        programme=body.programme,
+        programme=resolved_programme,
+        school_programme_id=school_programme_id,
         name=name,
         class_teacher_id=body.class_teacher_id,
         capacity=body.capacity,
@@ -761,8 +782,8 @@ async def set_student_subjects(
 ):
     """
     Replace this student's elective subject selections.
-    Only subjects marked category='elective' that belong to the class are accepted.
-    Subjects not in the class curriculum are silently skipped.
+    All requested subject IDs must be electives in the student's class — any
+    that are missing or not categorised as elective raise HTTP 400.
     """
     enrollment_res = await db.execute(
         select(Enrollment).where(
@@ -1198,7 +1219,7 @@ async def promote_student(
     )
     db.add(new_enrollment)
     await db.flush()
-    enrollment.promoted_to_id = new_enrollment.id
+    enrollment.next_enrollment_id = new_enrollment.id
     await db.commit()
     await db.refresh(new_enrollment)
     return new_enrollment
@@ -1236,6 +1257,8 @@ async def repeat_student(
         status="active",
     )
     db.add(new_enrollment)
+    await db.flush()
+    enrollment.next_enrollment_id = new_enrollment.id
     await db.commit()
     await db.refresh(new_enrollment)
     return new_enrollment
@@ -1315,21 +1338,28 @@ async def bulk_promote(
             f"Use the day the new year actually begins for these students.",
         )
 
-    current_year_res = await db.execute(
-        select(AcademicYear).where(
-            AcademicYear.school_id == school.id,
-            AcademicYear.is_current.is_(True),
+    if body.from_academic_year_id:
+        source_year = await _get_year(body.from_academic_year_id, school.id, db)
+    else:
+        source_year_res = await db.execute(
+            select(AcademicYear).where(
+                AcademicYear.school_id == school.id,
+                AcademicYear.is_current.is_(True),
+            )
         )
-    )
-    current_year = current_year_res.scalar_one_or_none()
-    if not current_year:
-        raise HTTPException(400, "No current academic year set")
+        source_year = source_year_res.scalar_one_or_none()
+        if not source_year:
+            raise HTTPException(
+                400,
+                "No current academic year set. "
+                "Pass from_academic_year_id to specify the source year explicitly.",
+            )
 
     result = await db.execute(
         select(Enrollment).where(
             Enrollment.school_id == school.id,
             Enrollment.class_id == body.from_class_id,
-            Enrollment.academic_year_id == current_year.id,
+            Enrollment.academic_year_id == source_year.id,
             Enrollment.status == "active",
         )
     )
@@ -1372,7 +1402,7 @@ async def bulk_promote(
             start_date=body.start_date,
             status="active",
         ))
-        enrollment.promoted_to_id = new_id
+        enrollment.next_enrollment_id = new_id
         promoted += 1
 
     await db.commit()
@@ -1431,7 +1461,7 @@ async def demote_student(
     )
     db.add(new_enrollment)
     await db.flush()
-    enrollment.promoted_to_id = new_enrollment.id   # link chain (re-used for demotion too)
+    enrollment.next_enrollment_id = new_enrollment.id   # link chain (re-used for demotion too)
     await db.commit()
     await db.refresh(new_enrollment)
     return new_enrollment
@@ -1495,8 +1525,8 @@ async def unenroll_student(
     # the chain link so the parent row keeps its history but doesn't FK-block.
     await db.execute(
         update(Enrollment)
-        .where(Enrollment.promoted_to_id == enrollment.id)
-        .values(promoted_to_id=None)
+        .where(Enrollment.next_enrollment_id == enrollment.id)
+        .values(next_enrollment_id=None)
     )
 
     await db.delete(enrollment)

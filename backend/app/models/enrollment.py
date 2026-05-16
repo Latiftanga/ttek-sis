@@ -41,12 +41,12 @@ class Enrollment(Base):
     start_date       = Column(Date, nullable=False)   # when they joined this class
     end_date         = Column(Date, nullable=True)    # when they left (NULL = current)
 
-    # ── Promotion tracking ────────────────────────────────────────
-    promoted_to_id   = Column(UUID(as_uuid=True),
-                             ForeignKey("enrollments.id"),
-                             nullable=True)
-    # Points to the NEXT enrollment record after promotion
-    # Lets you trace the full path: JHS1A → JHS2A → JHS3A
+    # ── Transition tracking ───────────────────────────────────────
+    next_enrollment_id = Column(UUID(as_uuid=True),
+                               ForeignKey("enrollments.id"),
+                               nullable=True)
+    # Points to the NEXT enrollment regardless of transition type
+    # (promote, demote, repeat). Traces: JHS1A → JHS2A → JHS3A
 
     # ── Position in class ─────────────────────────────────────────
     # Computed at end of term from grades
@@ -63,7 +63,7 @@ class Enrollment(Base):
     student         = relationship("Student", back_populates="enrollments")
     class_          = relationship("Class", back_populates="enrollments")
     academic_year   = relationship("AcademicYear")
-    promoted_to     = relationship("Enrollment", remote_side="Enrollment.id",
-                                  foreign_keys=[promoted_to_id])
+    next_enrollment  = relationship("Enrollment", remote_side="Enrollment.id",
+                                   foreign_keys=[next_enrollment_id])
     student_subjects = relationship("StudentSubject", back_populates="enrollment",
                                    cascade="all, delete-orphan")

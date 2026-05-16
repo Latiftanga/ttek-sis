@@ -252,17 +252,36 @@ async def create_assessment(
             f"max_score {body.max_score} exceeds category maximum of {category.max_score}"
         )
 
-    # If category doesn't allow multiple, check none exists for this
-    # class + subject + term + category
+    # For categories allowing multiple instances: prevent same category on the same date.
+    if category.allows_multiple and body.date_administered is not None:
+        dup = await db.execute(
+            select(Assessment.id).where(
+                Assessment.school_id      == school.id,
+                Assessment.class_id       == body.class_id,
+                Assessment.subject_id     == body.subject_id,
+                Assessment.term_id        == body.term_id,
+                Assessment.category_id    == body.category_id,
+                Assessment.date_administered == body.date_administered,
+            ).limit(1)
+        )
+        if dup.scalar_one_or_none():
+            raise HTTPException(
+                409,
+                f"A '{category.name}' assessment on "
+                f"{body.date_administered.strftime('%d/%m/%Y')} already exists "
+                f"for this class and subject.",
+            )
+
+    # For categories that only allow one per term: prevent any second one.
     if not category.allows_multiple:
         exists = await db.execute(
-            select(Assessment).where(
+            select(Assessment.id).where(
                 Assessment.school_id   == school.id,
                 Assessment.category_id == body.category_id,
                 Assessment.class_id    == body.class_id,
                 Assessment.subject_id  == body.subject_id,
                 Assessment.term_id     == body.term_id,
-            )
+            ).limit(1)
         )
         if exists.scalar_one_or_none():
             raise HTTPException(
@@ -277,7 +296,7 @@ async def create_assessment(
         class_id=body.class_id,
         subject_id=body.subject_id,
         term_id=body.term_id,
-        title=body.title,
+        description=body.description,
         date_administered=body.date_administered,
         max_score=body.max_score,
         created_by=user.id,
@@ -301,8 +320,9 @@ async def update_assessment(
             "Cannot edit a published assessment. Unpublish first."
         )
 
-    # If date_administered is being changed, re-validate against the term.
-    if body.date_administered is not None:
+    # If the date is being changed, re-validate it falls within the term and
+    # doesn't collide with another assessment of the same category on that date.
+    if body.date_administered is not None and body.date_administered != assessment.date_administered:
         term = await _get_term(assessment.term_id, school.id, db)
         if not (term.start_date <= body.date_administered <= term.end_date):
             raise HTTPException(
@@ -310,6 +330,23 @@ async def update_assessment(
                 f"Assessment date {body.date_administered} is outside the term "
                 f"'{term.name}' ({term.start_date} to {term.end_date}). "
                 f"Pick a date within the term."
+            )
+        dup = await db.execute(
+            select(Assessment.id).where(
+                Assessment.school_id      == school.id,
+                Assessment.class_id       == assessment.class_id,
+                Assessment.subject_id     == assessment.subject_id,
+                Assessment.term_id        == assessment.term_id,
+                Assessment.category_id    == assessment.category_id,
+                Assessment.date_administered == body.date_administered,
+                Assessment.id             != assessment.id,
+            ).limit(1)
+        )
+        if dup.scalar_one_or_none():
+            raise HTTPException(
+                409,
+                f"Another assessment of the same type already exists on "
+                f"{body.date_administered.strftime('%d/%m/%Y')} for this class and subject.",
             )
 
     for field, value in body.model_dump(exclude_unset=True).items():
@@ -778,8 +815,8 @@ async def suspicious_edits(
             flags.append("edited_more_than_twice")
 
         suspicious.append({
-            "assessment_title": assessment.title,
-            "student_id":       str(score.student_id),
+            "assessment_id":  str(assessment.id),
+            "student_id":     str(score.student_id),
             "changed_by":       str(log.changed_by),
             "changed_at":       log.changed_at.isoformat(),
             "old_score":        float(log.old_score) if log.old_score else None,

@@ -4,6 +4,8 @@ from typing import Literal, Optional, List
 from pydantic import BaseModel, field_validator, model_validator
 import re
 
+from app.models.academic import LEVEL_GROUPS
+
 
 # ══════════════════════════════════════════════════════
 # ACADEMIC YEAR
@@ -105,12 +107,7 @@ class TermResponse(BaseModel):
 
 VALID_STREAMS = {"A", "B", "C", "D", "E"}
 
-VALID_LEVELS = {
-    "preschool": [0, 1, 2],   # 0 = Creche, 1 = Nursery 1, 2 = Nursery 2
-    "kg":        [1, 2],
-    "basic":     [1, 2, 3, 4, 5, 6, 7, 8, 9],
-    "shs":       [1, 2, 3],
-}
+VALID_LEVELS = {k: v["levels"] for k, v in LEVEL_GROUPS.items()}
 
 
 class ClassCreate(BaseModel):
@@ -174,6 +171,7 @@ class ClassResponse(BaseModel):
     level_number: Optional[int] = None
     stream: Optional[str] = None
     programme: Optional[str] = None
+    school_programme_id: Optional[UUID] = None
     capacity: int
     is_active: bool
     class_teacher_id: Optional[UUID] = None
@@ -277,7 +275,7 @@ class ClassSubjectResponse(BaseModel):
     subject_id: UUID
     subject_name: str
     subject_code: Optional[str] = None
-    subject_category: str
+    subject_category: Optional[str] = None
     teacher_id: Optional[UUID] = None
     teacher_name: Optional[str] = None
     order: int
@@ -303,7 +301,8 @@ class SubjectEnrollmentBulkSet(BaseModel):
 class BulkPromoteRequest(BaseModel):
     from_class_id: UUID
     to_class_id: UUID
-    academic_year_id: UUID
+    from_academic_year_id: Optional[UUID] = None  # defaults to current year when omitted
+    academic_year_id: UUID                         # target year
     start_date: date
     exclude_student_ids: List[UUID] = []
 

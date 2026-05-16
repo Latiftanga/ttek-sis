@@ -1,7 +1,7 @@
 import uuid
 from sqlalchemy import (
     Boolean, Column, String, Integer,
-    ForeignKey, DateTime, Date, UniqueConstraint, func
+    ForeignKey, DateTime, Date, UniqueConstraint, Index, text, func
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -24,6 +24,14 @@ BASIC_BECE_LEVELS = [7, 8, 9]
 
 class AcademicYear(Base):
     __tablename__ = "academic_years"
+    __table_args__ = (
+        UniqueConstraint("school_id", "name", name="uq_academic_year_school_name"),
+        Index(
+            "uix_current_academic_year", "school_id",
+            unique=True,
+            postgresql_where=text("is_current IS TRUE"),
+        ),
+    )
 
     id         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     school_id  = Column(UUID(as_uuid=True),
@@ -44,6 +52,14 @@ class AcademicYear(Base):
 
 class Term(Base):
     __tablename__ = "terms"
+    __table_args__ = (
+        UniqueConstraint("school_id", "academic_year_id", "name", name="uq_term_school_year_name"),
+        Index(
+            "uix_current_term", "school_id",
+            unique=True,
+            postgresql_where=text("is_current IS TRUE"),
+        ),
+    )
 
     id               = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     school_id        = Column(UUID(as_uuid=True),
@@ -92,17 +108,23 @@ class Class(Base):
     # Auto-generated display name — stored for fast queries
     name             = Column(String(100), nullable=False)
 
-    class_teacher_id = Column(UUID(as_uuid=True),
-                             ForeignKey("staff.id"),
-                             nullable=True)
-    capacity         = Column(Integer, default=45)
-    is_active        = Column(Boolean, default=True)
-    created_at       = Column(DateTime(timezone=True), server_default=func.now())
+    class_teacher_id    = Column(UUID(as_uuid=True),
+                               ForeignKey("staff.id"),
+                               nullable=True)
+    school_programme_id = Column(UUID(as_uuid=True),
+                                ForeignKey("school_programmes.id", ondelete="SET NULL"),
+                                nullable=True)
+    # FK to the school's own programme record. NULL for non-SHS classes.
+    # ON DELETE SET NULL so removing a programme doesn't orphan classes.
+    capacity            = Column(Integer, default=45)
+    is_active           = Column(Boolean, default=True)
+    created_at          = Column(DateTime(timezone=True), server_default=func.now())
 
     # Relationships
-    school           = relationship("School", back_populates="classes")
-    class_teacher    = relationship("Staff")
-    enrollments      = relationship("Enrollment", back_populates="class_")
+    school            = relationship("School", back_populates="classes")
+    class_teacher     = relationship("Staff")
+    school_programme  = relationship("SchoolProgramme")
+    enrollments       = relationship("Enrollment", back_populates="class_")
     class_subjects   = relationship(
         "ClassSubject", back_populates="class_",
         cascade="all, delete-orphan",
@@ -136,6 +158,9 @@ class Class(Base):
         # Pre-School: 0 = Creche, 1+ = Nursery N
         if level_group == "preschool":
             if level_number == 0:
+                # Creche has no level number, so stream gets a separating space: "Creche A".
+                # Numbered classes (Nursery, KG, Basic) concatenate stream to the number
+                # without a space: "Nursery 2B", "KG 2A". This matches GES naming — intentional.
                 return f"Creche {stream}" if stream else "Creche"
             name = f"Nursery {level_number}"
             if stream:

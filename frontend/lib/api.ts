@@ -565,7 +565,7 @@ export interface Assessment {
   class_id: string;
   subject_id: string;
   term_id: string;
-  title: string;
+  description: string | null;
   date_administered: string | null;
   max_score: number;
   is_published: boolean;
@@ -578,13 +578,13 @@ export interface AssessmentCreateBody {
   class_id: string;
   subject_id: string;
   term_id: string;
-  title: string;
+  description?: string | null;
   date_administered?: string | null;
   max_score: number;
 }
 
 export interface AssessmentUpdateBody {
-  title?: string;
+  description?: string | null;
   date_administered?: string | null;
   max_score?: number;
 }
