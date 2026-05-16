@@ -163,7 +163,38 @@ export const staffApi = {
 };
 
 // ── School ──────────────────────────────────────────────────────────────
+
+export interface SchoolProfile {
+  id: string;
+  name: string;
+  slug: string;
+  school_type: string;
+  region: string | null;
+  district: string | null;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+  logo_url: string | null;
+  accent_color: string;
+  subscription: string;
+}
+
+export interface SchoolPeriod {
+  id: string;
+  school_id: string;
+  name: string;
+  start_time: string;
+  end_time: string;
+  order: number;
+  is_break: boolean;
+  is_active: boolean;
+}
+
 export const schoolApi = {
+  getProfile: (): Promise<SchoolProfile> =>
+    api.get("/school/profile").then((r) => r.data),
+  updateProfile: (body: Partial<Omit<SchoolProfile, "id" | "slug" | "subscription">>): Promise<SchoolProfile> =>
+    api.patch("/school/profile", body).then((r) => r.data),
   listProgrammes: (ownOnly = false): Promise<{ id: string; name: string; short_name: string | null; description: string | null }[]> =>
     api.get("/school/programmes", { params: ownOnly ? { own_only: true } : {} }).then((r) => r.data),
   createProgramme: (body: { name: string; short_name: string; description?: string; order?: number }) =>
@@ -480,7 +511,14 @@ export interface AttendanceAlertsResponse {
 }
 
 export const attendanceApi = {
-  listPeriods: () => api.get("/attendance/periods").then((r) => r.data),
+  listPeriods: (): Promise<SchoolPeriod[]> =>
+    api.get("/attendance/periods").then((r) => r.data),
+  createPeriod: (body: { name: string; start_time: string; end_time: string; order: number; is_break?: boolean }): Promise<SchoolPeriod> =>
+    api.post("/attendance/periods", body).then((r) => r.data),
+  updatePeriod: (id: string, body: { name?: string; start_time?: string; end_time?: string; order?: number; is_break?: boolean; is_active?: boolean }): Promise<SchoolPeriod> =>
+    api.patch(`/attendance/periods/${id}`, body).then((r) => r.data),
+  deletePeriod: (id: string) =>
+    api.delete(`/attendance/periods/${id}`),
   createSession: (body: SessionCreateBody): Promise<AttendanceSession> =>
     api.post("/attendance/sessions", body).then((r) => r.data),
   submitSession: (sessionId: string, body: SessionSubmitBody): Promise<AttendanceSession> =>

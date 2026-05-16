@@ -6,9 +6,10 @@ from sqlalchemy import select
 
 from app.dependencies import CurrentUser, CurrentSchool, DB, require_roles
 from app.models.programme import SchoolProgramme, SystemProgramme
+from app.models.school import School
 from app.models.school_house import SchoolHouse
 from app.models.user import User
-from app.schemas.school import ProgrammeCreate, ProgrammeUpdate, HouseCreate, HouseUpdate
+from app.schemas.school import ProgrammeCreate, ProgrammeUpdate, HouseCreate, HouseUpdate, SchoolUpdate
 
 router = APIRouter()
 
@@ -183,3 +184,43 @@ async def delete_house(
         raise HTTPException(404, "House not found")
     await db.delete(house)
     await db.commit()
+
+
+# ── School profile ────────────────────────────────────────────────────────────
+
+def _school_dict(s: School) -> dict:
+    return {
+        "id":           str(s.id),
+        "name":         s.name,
+        "slug":         s.slug,
+        "school_type":  s.school_type,
+        "region":       s.region,
+        "district":     s.district,
+        "address":      s.address,
+        "phone":        s.phone,
+        "email":        s.email,
+        "logo_url":     s.logo_url,
+        "accent_color": s.accent_color,
+        "subscription": s.subscription,
+    }
+
+
+@router.get("/school/profile")
+async def get_school_profile(user: CurrentUser, school: CurrentSchool):
+    return _school_dict(school)
+
+
+@router.patch("/school/profile")
+async def update_school_profile(
+    body: SchoolUpdate,
+    _: WriteRole,
+    school: CurrentSchool,
+    db: DB,
+):
+    result = await db.execute(select(School).where(School.id == school.id))
+    s = result.scalar_one()
+    for field, value in body.model_dump(exclude_none=True).items():
+        setattr(s, field, value)
+    await db.commit()
+    await db.refresh(s)
+    return _school_dict(s)

@@ -10,6 +10,7 @@ import {
   type SessionCreateBody,
   type SessionSubmitBody,
   type RecordEditBody,
+  type SchoolPeriod,
 } from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
 
@@ -101,6 +102,46 @@ export function useSubmitSession() {
         queryKey: [slug, "attendance", "class-today", session.class_id],
       });
     },
+  });
+}
+
+// School periods (time slots used by per-lesson attendance).
+export function useSchoolPeriods() {
+  const slug = useSlug();
+  return useQuery<SchoolPeriod[]>({
+    queryKey: [slug, "attendance", "periods"],
+    queryFn: () => attendanceApi.listPeriods(),
+    enabled: !!slug,
+    staleTime: 60_000,
+  });
+}
+
+export function useCreatePeriod() {
+  const slug = useSlug();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { name: string; start_time: string; end_time: string; order: number; is_break?: boolean }) =>
+      attendanceApi.createPeriod(body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [slug, "attendance", "periods"] }),
+  });
+}
+
+export function useUpdatePeriod() {
+  const slug = useSlug();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string; name?: string; start_time?: string; end_time?: string; order?: number; is_break?: boolean }) =>
+      attendanceApi.updatePeriod(id, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [slug, "attendance", "periods"] }),
+  });
+}
+
+export function useDeletePeriod() {
+  const slug = useSlug();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => attendanceApi.deletePeriod(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [slug, "attendance", "periods"] }),
   });
 }
 

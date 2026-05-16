@@ -7,13 +7,11 @@ import toast from "react-hot-toast";
 import {
   BookOpen, CalendarDays, School, ChevronDown, ChevronRight,
   Plus, Pencil, CheckCircle2, BookMarked, Trash2, ArrowRight,
-  Layers,
 } from "lucide-react";
 import Link from "next/link";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
-import Textarea from "@/components/ui/Textarea";
 import Drawer from "@/components/ui/Drawer";
 import ConfirmSheet from "@/components/ui/ConfirmSheet";
 import Badge from "@/components/ui/Badge";
@@ -22,24 +20,20 @@ import { formatDate, getApiError, capitalize } from "@/lib/utils";
 import { useAuthStore } from "@/lib/store";
 import {
   useAcademicYears, useTerms, useClasses, useSubjects,
-  useSchoolProgrammes,
   useCreateYear, useUpdateYear, useSetCurrentYear,
   useCreateTerm, useUpdateTerm, useSetCurrentTerm,
   useCreateClass,
   useCreateSubject, useDeleteSubject,
-  useCreateProgramme, useUpdateProgramme, useDeleteProgramme,
   useUpdateSubject,
   type AcademicYear, type Term, type Class, type Subject,
-  type SchoolProgramme,
 } from "@/lib/hooks/useAcademic";
 
 // ── Tabs ──────────────────────────────────────────────────────────────────
 
 const TABS = [
-  { key: "calendar",   label: "Academic Calendar", icon: CalendarDays },
-  { key: "programmes", label: "Programmes",         icon: Layers },
-  { key: "classes",    label: "Classes",            icon: School },
-  { key: "subjects",   label: "Subjects",           icon: BookMarked },
+  { key: "calendar", label: "Academic Calendar", icon: CalendarDays },
+  { key: "classes",  label: "Classes",           icon: School },
+  { key: "subjects", label: "Subjects",          icon: BookMarked },
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
 
@@ -104,15 +98,6 @@ const termSchema = z
   });
 type TermValues = z.infer<typeof termSchema>;
 
-// ── Programme form schema ─────────────────────────────────────────────────
-
-const programmeSchema = z.object({
-  name:        z.string().min(1, "Name is required"),
-  short_name:  z.string().min(1, "Abbreviation is required").max(10, "Max 10 characters").toUpperCase(),
-  description: z.string().optional(),
-});
-type ProgrammeValues = z.infer<typeof programmeSchema>;
-
 // ── Subject form schema ───────────────────────────────────────────────────
 
 const subjectSchema = z.object({
@@ -132,10 +117,7 @@ export default function AcademicPage() {
   const isAdmin = user?.role === "school_admin" || user?.role === "headteacher";
   const schoolType = school?.school_type ?? "basic";
 
-  // Programmes only apply to SHS schools.
-  const visibleTabs = TABS.filter(
-    (t) => !(t.key === "programmes" && schoolType !== "shs"),
-  );
+  const visibleTabs = TABS;
 
   return (
     <div className="space-y-6">
@@ -162,10 +144,9 @@ export default function AcademicPage() {
         ))}
       </div>
 
-      {tab === "calendar"   && <CalendarSection    isAdmin={isAdmin} />}
-      {tab === "programmes" && <ProgrammesSection  isAdmin={isAdmin} />}
-      {tab === "classes"    && <ClassesSection     isAdmin={isAdmin} schoolType={schoolType} />}
-      {tab === "subjects"   && <SubjectsSection    isAdmin={isAdmin} schoolType={schoolType} />}
+      {tab === "calendar" && <CalendarSection isAdmin={isAdmin} />}
+      {tab === "classes"  && <ClassesSection  isAdmin={isAdmin} schoolType={schoolType} />}
+      {tab === "subjects" && <SubjectsSection isAdmin={isAdmin} schoolType={schoolType} />}
     </div>
   );
 }
@@ -938,170 +919,6 @@ function SubjectsSection({ isAdmin, schoolType }: { isAdmin: boolean; schoolType
 // ═════════════════════════════════════════════════════════════════════════
 // PROGRAMMES SECTION
 // ═════════════════════════════════════════════════════════════════════════
-
-function ProgrammesSection({ isAdmin }: { isAdmin: boolean }) {
-  const { data: programmes = [], isLoading } = useSchoolProgrammes(true);
-  const createProgramme = useCreateProgramme();
-  const updateProgramme = useUpdateProgramme();
-  const deleteProgramme = useDeleteProgramme();
-
-  const [formOpen, setFormOpen]         = useState(false);
-  const [editTarget, setEditTarget]     = useState<SchoolProgramme | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<SchoolProgramme | null>(null);
-
-  const { register, handleSubmit, reset, watch, formState: { errors, isSubmitting } } =
-    useForm<ProgrammeValues>({ resolver: zodResolver(programmeSchema) });
-
-  const shortPreview = (watch("short_name") || "").toUpperCase().trim();
-
-  function openAdd() {
-    reset({ name: "", short_name: "", description: "" });
-    setEditTarget(null);
-    setFormOpen(true);
-  }
-
-  function openEdit(p: SchoolProgramme) {
-    reset({ name: p.name, short_name: p.short_name ?? "", description: p.description ?? "" });
-    setEditTarget(p);
-    setFormOpen(true);
-  }
-
-  async function onSubmit(values: ProgrammeValues) {
-    try {
-      if (editTarget) {
-        await updateProgramme.mutateAsync({ id: editTarget.id, name: values.name, short_name: values.short_name, description: values.description });
-        toast.success("Programme updated");
-      } else {
-        await createProgramme.mutateAsync({ name: values.name, short_name: values.short_name, description: values.description });
-        toast.success(`"${values.name}" added`);
-      }
-      setFormOpen(false);
-    } catch (err) {
-      toast.error(getApiError(err));
-    }
-  }
-
-  async function handleDelete(p: SchoolProgramme) {
-    try {
-      await deleteProgramme.mutateAsync(p.id);
-      toast.success(`"${p.name}" removed`);
-      setDeleteTarget(null);
-    } catch (err) {
-      toast.error(getApiError(err));
-    }
-  }
-
-  if (isLoading) return <div className="h-48 animate-pulse rounded-xl bg-gray-100 dark:bg-gray-800" />;
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Programmes</h2>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Academic programmes offered by the school</p>
-        </div>
-        {isAdmin && (
-          <Button size="sm" onClick={openAdd}>
-            <Plus className="h-4 w-4" />Add Programme
-          </Button>
-        )}
-      </div>
-
-      {programmes.length === 0 ? (
-        <EmptyState
-          message="No programmes configured yet."
-          action={isAdmin ? { label: "Add Programme", onClick: openAdd } : undefined}
-        />
-      ) : (
-        <div className="rounded-xl border border-gray-200 bg-white divide-y divide-gray-100 dark:border-gray-700 dark:bg-gray-900 dark:divide-gray-800">
-          {programmes.map((p) => (
-            <div key={p.id} className="flex items-center gap-3 px-5 py-3">
-              <div className="flex flex-1 min-w-0 items-center gap-2">
-                <span className="text-sm font-medium text-gray-900 dark:text-white">{p.name}</span>
-                {p.short_name && (
-                  <span className="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs text-gray-500 dark:bg-gray-800 dark:text-gray-400">
-                    {p.short_name}
-                  </span>
-                )}
-              </div>
-              {isAdmin && (
-                <div className="flex items-center gap-1 shrink-0">
-                  <button
-                    onClick={() => openEdit(p)}
-                    className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
-                    aria-label={`Edit ${p.name}`}
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    onClick={() => setDeleteTarget(p)}
-                    className="rounded p-1 text-gray-300 hover:bg-red-50 hover:text-red-500 dark:text-gray-600 dark:hover:bg-red-950/40 dark:hover:text-red-400"
-                    aria-label={`Remove ${p.name}`}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      <Drawer open={formOpen} onClose={() => setFormOpen(false)} title={editTarget ? "Edit Programme" : "Add Programme"} width="md">
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
-          <Input
-            id="prog_name"
-            label="Name *"
-            placeholder="e.g. General Science"
-            error={errors.name?.message}
-            {...register("name")}
-          />
-          <Input
-            id="prog_short"
-            label="Abbreviation *"
-            placeholder="e.g. SC"
-            error={errors.short_name?.message}
-            {...register("short_name")}
-          />
-          <p className="-mt-2 text-xs text-gray-400 dark:text-gray-500">
-            Shown in class names.{" "}
-            {shortPreview ? (
-              <>
-                Preview:{" "}
-                <span className="font-mono text-gray-600 dark:text-gray-300">
-                  1{shortPreview} A
-                </span>
-              </>
-            ) : (
-              <>e.g. SC → 1SC A, ART → 2ART B</>
-            )}
-          </p>
-          <Textarea
-            id="prog_desc"
-            label="Description"
-            placeholder="Optional description"
-            error={errors.description?.message}
-            {...register("description")}
-          />
-          <div className="flex justify-end gap-3 border-t border-gray-100 pt-4 dark:border-gray-800">
-            <Button type="button" variant="secondary" onClick={() => setFormOpen(false)}>Cancel</Button>
-            <Button type="submit" loading={isSubmitting}>{editTarget ? "Save Changes" : "Add Programme"}</Button>
-          </div>
-        </form>
-      </Drawer>
-
-      <ConfirmSheet
-        open={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-        title="Remove Programme?"
-        description={<>Remove <strong>{deleteTarget?.name}</strong>? Students already assigned this programme keep the name; only future assignments are affected.</>}
-        confirmLabel="Remove"
-        loading={deleteProgramme.isPending}
-        onConfirm={() => deleteTarget && handleDelete(deleteTarget)}
-      />
-    </div>
-  );
-}
 
 
 // ── Shared empty state ────────────────────────────────────────────────────
