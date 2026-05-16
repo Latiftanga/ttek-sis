@@ -133,11 +133,11 @@ export default function StaffPage() {
             Manage staff records for your school
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" size="sm" onClick={() => setBulkOpen(true)}>
+        <div className="flex w-full gap-2 sm:w-auto sm:flex-wrap">
+          <Button variant="secondary" size="sm" className="h-10 flex-1 sm:h-8 sm:flex-none" onClick={() => setBulkOpen(true)}>
             <Upload className="h-4 w-4" />Bulk Upload
           </Button>
-          <Button size="sm" onClick={openAdd}>
+          <Button size="sm" className="h-10 flex-1 sm:h-8 sm:flex-none" onClick={openAdd}>
             <UserPlus className="h-4 w-4" />Add Staff
           </Button>
         </div>

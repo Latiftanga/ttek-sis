@@ -264,18 +264,18 @@ export default function StudentsPage() {
             Manage student records for your school
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" size="sm" loading={exporting} onClick={handleExport}>
+        <div className="flex w-full gap-2 sm:w-auto sm:flex-wrap">
+          <Button variant="secondary" size="sm" className="h-10 flex-1 sm:h-8 sm:flex-none" loading={exporting} onClick={handleExport}>
             <Download className="h-4 w-4" />
             Export
           </Button>
           {canManage && (
             <>
-              <Button variant="secondary" size="sm" onClick={() => setBulkOpen(true)}>
+              <Button variant="secondary" size="sm" className="h-10 flex-1 sm:h-8 sm:flex-none" onClick={() => setBulkOpen(true)}>
                 <Upload className="h-4 w-4" />
                 Bulk Upload
               </Button>
-              <Button size="sm" onClick={() => { setEditStudent(null); setDrawerOpen(true); }}>
+              <Button size="sm" className="h-10 flex-1 sm:h-8 sm:flex-none" onClick={() => { setEditStudent(null); setDrawerOpen(true); }}>
                 <UserPlus className="h-4 w-4" />
                 Add Student
               </Button>
