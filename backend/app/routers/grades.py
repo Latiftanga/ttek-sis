@@ -9,6 +9,13 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 
 from app.dependencies import CurrentUser, CurrentSchool, DB
+from app.utils import (
+    assert_class_in_school as _assert_class_in_school,
+    assert_term_in_school as _assert_term_in_school,
+    assert_subject_in_school as _assert_subject_in_school,
+    assert_students_in_school as _assert_students_in_school,
+    assert_student_in_school as _assert_student_in_school,
+)
 from app.models.assessment import (
     GradingScale, GradingBand,
     AssessmentCategory, Assessment,
@@ -1147,26 +1154,6 @@ async def _get_category(
     return c
 
 
-async def _assert_class_in_school(
-    class_id: UUID, school_id: UUID, db: AsyncSession
-) -> None:
-    result = await db.execute(
-        select(Class.id).where(Class.id == class_id, Class.school_id == school_id)
-    )
-    if not result.scalar_one_or_none():
-        raise HTTPException(404, "Class not found")
-
-
-async def _assert_term_in_school(
-    term_id: UUID, school_id: UUID, db: AsyncSession
-) -> None:
-    result = await db.execute(
-        select(Term.id).where(Term.id == term_id, Term.school_id == school_id)
-    )
-    if not result.scalar_one_or_none():
-        raise HTTPException(404, "Term not found")
-
-
 async def _get_term(term_id: UUID, school_id: UUID, db: AsyncSession) -> Term:
     result = await db.execute(
         select(Term).where(Term.id == term_id, Term.school_id == school_id)
@@ -1177,48 +1164,6 @@ async def _get_term(term_id: UUID, school_id: UUID, db: AsyncSession) -> Term:
     return t
 
 
-async def _assert_subject_in_school(
-    subject_id: UUID, school_id: UUID, db: AsyncSession
-) -> None:
-    result = await db.execute(
-        select(Subject.id).where(
-            Subject.id == subject_id,
-            Subject.school_id == school_id,
-        )
-    )
-    if not result.scalar_one_or_none():
-        raise HTTPException(404, "Subject not found")
-
-
-async def _assert_student_in_school(
-    student_id: UUID, school_id: UUID, db: AsyncSession
-) -> None:
-    result = await db.execute(
-        select(Student.id).where(
-            Student.id == student_id, Student.school_id == school_id
-        )
-    )
-    if not result.scalar_one_or_none():
-        raise HTTPException(404, "Student not found")
-
-
-async def _assert_students_in_school(
-    student_ids: list[UUID], school_id: UUID, db: AsyncSession
-) -> None:
-    if not student_ids:
-        return
-    unique_ids = list(set(student_ids))
-    result = await db.execute(
-        select(func.count(Student.id)).where(
-            Student.id.in_(unique_ids),
-            Student.school_id == school_id,
-        )
-    )
-    found = result.scalar() or 0
-    if found != len(unique_ids):
-        raise HTTPException(
-            400, "One or more student IDs do not belong to this school"
-        )
 
 
 async def _get_scale(

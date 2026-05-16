@@ -1,7 +1,7 @@
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from jose import jwt, JWTError
@@ -13,19 +13,22 @@ from app.config import settings
 from app.models.user import User
 from app.models.school import School
 from app.models.staff import Staff
+from app.redis_client import check_rate_limit
 from app.seeds import copy_system_programmes_to_school, copy_default_subjects_to_school
 
 from app.schemas.user import (
     LoginRequest, TokenResponse, SchoolBrief, UserResponse,
-    RefreshRequest, RegisterRequest,
+    RegisterRequest,
 )
 
 router = APIRouter()
 pwd = PasswordHash((Argon2Hasher(),))
 UTC = timezone.utc
 
-# Dummy hash used to ensure constant-time behaviour when user is not found.
 _DUMMY_HASH = pwd.hash("__dummy_password__")
+
+_REFRESH_COOKIE = "refresh_token"
+_COOKIE_PATH = "/api/auth"
 
 
 def hash_password(password: str) -> str:
@@ -42,12 +45,31 @@ def make_slug(name: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:50]
     return f"{slug}-{str(uuid.uuid4())[:4]}"
 
+def _set_refresh_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        key=_REFRESH_COOKIE,
+        value=token,
+        httponly=True,
+        samesite="lax",
+        secure=settings.APP_ENV != "development",
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86_400,
+        path=_COOKIE_PATH,
+    )
+
+def _clear_refresh_cookie(response: Response) -> None:
+    response.delete_cookie(key=_REFRESH_COOKIE, path=_COOKIE_PATH)
+
 
 @router.post("/login", response_model=TokenResponse)
 async def login(
     body: LoginRequest,
+    request: Request,
+    response: Response,
     db: AsyncSession = Depends(get_db),
 ):
+    client_ip = request.client.host if request.client else "unknown"
+    await check_rate_limit(f"login:{client_ip}", limit=10, window_seconds=300)
+
     result = await db.execute(
         select(User).where(User.email == body.email.lower())
     )
@@ -90,12 +112,13 @@ async def login(
         timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     )
 
+    _set_refresh_cookie(response, refresh_token)
+
     user.last_login = datetime.now(UTC)
     await db.commit()
 
     return TokenResponse(
         access_token=access_token,
-        refresh_token=refresh_token,
         user=UserResponse.model_validate(user),
         school=SchoolBrief.model_validate(school) if school else None,
     )
@@ -103,10 +126,14 @@ async def login(
 
 @router.post("/refresh")
 async def refresh_token(
-    body: RefreshRequest,
+    request: Request,
+    response: Response,
     db: AsyncSession = Depends(get_db),
 ):
-    token = body.refresh_token
+    token = request.cookies.get(_REFRESH_COOKIE)
+    if not token:
+        raise HTTPException(status_code=401, detail="No refresh token")
+
     try:
         payload = jwt.decode(
             token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
@@ -114,6 +141,7 @@ async def refresh_token(
         if payload.get("type") != "refresh":
             raise ValueError("Not a refresh token")
     except (JWTError, ValueError):
+        _clear_refresh_cookie(response)
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
     user_id = payload.get("sub")
@@ -123,6 +151,7 @@ async def refresh_token(
     result = await db.execute(select(User).where(User.id == uuid.UUID(user_id)))
     user = result.scalar_one_or_none()
     if not user or not user.is_active:
+        _clear_refresh_cookie(response)
         raise HTTPException(status_code=401, detail="Account inactive")
 
     token_data = {
@@ -134,7 +163,19 @@ async def refresh_token(
         token_data,
         timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
+    # Rotate the refresh token
+    new_refresh = create_token(
+        {**token_data, "type": "refresh"},
+        timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    )
+    _set_refresh_cookie(response, new_refresh)
+
     return {"access_token": access_token, "token_type": "bearer"}
+
+
+@router.post("/logout", status_code=204)
+async def logout(response: Response):
+    _clear_refresh_cookie(response)
 
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
@@ -180,11 +221,9 @@ async def register_school(
     )
     db.add(user)
 
-    # SHS schools start with the GES standard programmes pre-populated.
     if school.school_type == "shs":
         await copy_system_programmes_to_school(db, school.id)
 
-    # Every school gets its default subject catalogue.
     await copy_default_subjects_to_school(db, school.id, school.school_type)
 
     await db.commit()

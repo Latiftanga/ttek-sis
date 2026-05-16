@@ -1,6 +1,6 @@
 import uuid
 from sqlalchemy import (
-    Column, String, Date, ForeignKey,
+    Column, String, Integer, Date, ForeignKey,
     DateTime, Boolean, Text, func
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -50,8 +50,7 @@ class Enrollment(Base):
 
     # ── Position in class ─────────────────────────────────────────
     # Computed at end of term from grades
-    position         = Column(String(10), nullable=True)
-    # "1st" | "2nd" | "15th" etc.
+    position         = Column(Integer, nullable=True)
 
     is_boarding      = Column(Boolean, default=False)
     notes            = Column(Text)   # reason for demotion, special circumstances

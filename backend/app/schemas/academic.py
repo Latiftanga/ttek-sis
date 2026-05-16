@@ -36,6 +36,13 @@ class AcademicYearUpdate(BaseModel):
     name: Optional[str] = None
     start_date: Optional[date] = None
     end_date: Optional[date] = None
+    is_current: Optional[bool] = None
+
+    @model_validator(mode="after")
+    def validate_dates(self):
+        if self.start_date and self.end_date and self.end_date <= self.start_date:
+            raise ValueError("end_date must be after start_date")
+        return self
 
 
 class AcademicYearResponse(BaseModel):
@@ -54,21 +61,11 @@ class AcademicYearResponse(BaseModel):
 # TERM
 # ══════════════════════════════════════════════════════
 
-VALID_TERM_NAMES = {"Term 1", "Term 2", "Term 3"}
-
-
 class TermCreate(BaseModel):
     name: str
     start_date: date
     end_date: date
     is_current: bool = False
-
-    @field_validator("name")
-    @classmethod
-    def validate_name(cls, v):
-        if v not in VALID_TERM_NAMES:
-            raise ValueError("Term name must be Term 1, Term 2, or Term 3")
-        return v
 
     @model_validator(mode="after")
     def validate_dates(self):
@@ -81,6 +78,12 @@ class TermUpdate(BaseModel):
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     is_current: Optional[bool] = None
+
+    @model_validator(mode="after")
+    def validate_dates(self):
+        if self.start_date and self.end_date and self.end_date <= self.start_date:
+            raise ValueError("end_date must be after start_date")
+        return self
 
 
 class TermResponse(BaseModel):
@@ -314,7 +317,7 @@ class EnrollmentResponse(BaseModel):
     status: str
     start_date: date
     end_date: Optional[date] = None
-    position: Optional[str] = None
+    position: Optional[int] = None
     is_boarding: bool
     notes: Optional[str] = None
     created_at: datetime

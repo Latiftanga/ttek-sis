@@ -34,7 +34,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const res = await authApi.login(data.email, data.password);
-      setAuth(res.user, res.school, res.access_token, res.refresh_token);
+      setAuth(res.user, res.school, res.access_token);
       router.replace("/dashboard");
     } catch (err: unknown) {
       toast.error(getApiError(err, "Login failed. Check your credentials."));

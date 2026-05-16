@@ -241,7 +241,7 @@ class ScoreEditLog(Base):
                                 ForeignKey("schools.id", ondelete="CASCADE"),
                                 nullable=False)
     assessment_score_id = Column(UUID(as_uuid=True),
-                                ForeignKey("assessment_scores.id", ondelete="CASCADE"),
+                                ForeignKey("assessment_scores.id"),
                                 nullable=False)
     changed_by          = Column(UUID(as_uuid=True),
                                 ForeignKey("users.id"),

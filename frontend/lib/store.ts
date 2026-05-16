@@ -22,14 +22,11 @@ export interface AuthUser {
 interface AuthState {
   user: AuthUser | null;
   school: SchoolBrief | null;
+  // Access token is kept in memory only — never written to localStorage.
+  // Refresh token lives in an httpOnly cookie managed by the backend.
   accessToken: string | null;
-  refreshToken: string | null;
-  setAuth: (
-    user: AuthUser,
-    school: SchoolBrief | null,
-    access: string,
-    refresh: string
-  ) => void;
+  setAuth: (user: AuthUser, school: SchoolBrief | null, access: string) => void;
+  setAccessToken: (token: string) => void;
   clearAuth: () => void;
 }
 
@@ -39,26 +36,21 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       school: null,
       accessToken: null,
-      refreshToken: null,
-      setAuth: (user, school, accessToken, refreshToken) => {
-        localStorage.setItem("access_token", accessToken);
-        localStorage.setItem("refresh_token", refreshToken);
-        set({ user, school, accessToken, refreshToken });
+      setAuth: (user, school, accessToken) => {
+        set({ user, school, accessToken });
+      },
+      setAccessToken: (accessToken) => {
+        set({ accessToken });
       },
       clearAuth: () => {
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("refresh_token");
-        set({ user: null, school: null, accessToken: null, refreshToken: null });
+        set({ user: null, school: null, accessToken: null });
       },
     }),
     {
       name: "ttek-auth",
-      partialize: (s) => ({
-        user: s.user,
-        school: s.school,
-        accessToken: s.accessToken,
-        refreshToken: s.refreshToken,
-      }),
+      // Only persist non-sensitive metadata so the app can render school
+      // branding on reload. Tokens are intentionally excluded.
+      partialize: (s) => ({ user: s.user, school: s.school }),
     }
   )
 );

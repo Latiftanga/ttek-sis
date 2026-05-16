@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     # App
     APP_NAME: str = "TTEK-SIS"
     APP_ENV: str = "development"
-    DEBUG: bool = True
+    DEBUG: bool = False
     SEED_DEMO: bool = False
     CORS_ORIGINS: list[str] = ["http://localhost", "http://localhost:3000"]
 

@@ -2,33 +2,56 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/lib/store";
+import { authApi } from "@/lib/api";
+
+type Status = "loading" | "authed" | "unauthed";
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { user, accessToken } = useAuthStore();
+  const [status, setStatus] = useState<Status>("loading");
 
-  // Wait for zustand persist to finish rehydrating from localStorage before
-  // making auth decisions. `.persist` is only available on the client, so we
-  // must not touch it during SSR — defer the check to useEffect.
-  const [hydrated, setHydrated] = useState(false);
   useEffect(() => {
+    const check = async () => {
+      const { user, accessToken } = useAuthStore.getState();
+
+      if (!user) {
+        setStatus("unauthed");
+        return;
+      }
+
+      if (accessToken) {
+        setStatus("authed");
+        return;
+      }
+
+      // User metadata is persisted but the access token is in-memory only.
+      // On page reload the token is gone — attempt a silent refresh via the
+      // httpOnly refresh_token cookie before redirecting to login.
+      try {
+        const data = await authApi.refresh();
+        useAuthStore.getState().setAccessToken(data.access_token);
+        setStatus("authed");
+      } catch {
+        useAuthStore.getState().clearAuth();
+        setStatus("unauthed");
+      }
+    };
+
     if (useAuthStore.persist.hasHydrated()) {
-      setHydrated(true);
-      return;
+      check();
+    } else {
+      const unsub = useAuthStore.persist.onFinishHydration(check);
+      return unsub;
     }
-    const unsub = useAuthStore.persist.onFinishHydration(() =>
-      setHydrated(true)
-    );
-    return unsub;
   }, []);
 
   useEffect(() => {
-    if (hydrated && (!user || !accessToken)) {
+    if (status === "unauthed") {
       router.replace("/login");
     }
-  }, [hydrated, user, accessToken, router]);
+  }, [status, router]);
 
-  if (!hydrated || !user || !accessToken) {
+  if (status !== "authed") {
     return (
       <div
         role="status"

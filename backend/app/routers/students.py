@@ -8,7 +8,7 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, numbers as xl_numbers
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import selectinload
 from sqlalchemy import select
@@ -459,6 +459,7 @@ async def download_template(
 
 @router.post("/upload")
 async def bulk_upload_students(
+    request: Request,
     user: Annotated[User, Depends(require_roles("school_admin", "headteacher"))],
     school: CurrentSchool,
     db: DB,
@@ -470,8 +471,13 @@ async def bulk_upload_students(
     if not file.filename or not file.filename.endswith((".xlsx", ".xls")):
         raise HTTPException(400, "File must be an Excel file (.xlsx or .xls)")
 
+    max_size = 10 * 1024 * 1024  # 10 MB
+    content_length = request.headers.get("content-length")
+    if content_length and int(content_length) > max_size:
+        raise HTTPException(400, "File must be under 10 MB")
+
     contents = await file.read()
-    if len(contents) > 10 * 1024 * 1024:
+    if len(contents) > max_size:
         raise HTTPException(400, "File must be under 10 MB")
     try:
         wb = openpyxl.load_workbook(BytesIO(contents), data_only=True)
@@ -813,6 +819,16 @@ async def bulk_enable_portal(
     Useful at start of term.
     """
 
+    # Verify class belongs to this school before touching any enrollments
+    class_check = await db.execute(
+        select(ClassModel).where(
+            ClassModel.id == class_id,
+            ClassModel.school_id == school.id,
+        )
+    )
+    if not class_check.scalar_one_or_none():
+        raise HTTPException(404, "Class not found")
+
     year_res = await db.execute(
         select(AcademicYear).where(
             AcademicYear.school_id == school.id,
@@ -866,7 +882,7 @@ async def bulk_enable_portal(
 @router.post("/{student_id}/transfer-in")
 async def transfer_student_in(
     student_id: UUID,
-    user: CurrentUser,
+    user: Annotated[User, Depends(require_roles("school_admin", "headteacher"))],
     school: CurrentSchool,
     db: DB,
     class_id: Optional[UUID] = None,

@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from app.dependencies import CurrentUser, CurrentSchool, DB, require_roles
 from app.models.user import User
-from app.models.academic import AcademicYear, Term, Class, Subject
+from app.models.academic import AcademicYear, Term, Class, Subject, LEVEL_GROUPS
 from app.models.enrollment import Enrollment
 from app.models.student import Student
 from app.models.programme import SchoolProgramme, SystemProgramme
@@ -152,6 +152,17 @@ async def create_term(
     )
     if exists.scalar_one_or_none():
         raise HTTPException(409, f"'{body.name}' already exists for this academic year")
+
+    overlap = await db.execute(
+        select(Term).where(
+            Term.school_id == school.id,
+            Term.academic_year_id == year_id,
+            Term.start_date < body.end_date,
+            Term.end_date > body.start_date,
+        )
+    )
+    if overlap.scalar_one_or_none():
+        raise HTTPException(400, "Term dates overlap with an existing term in this academic year")
 
     if body.is_current:
         await _unset_current_term(school.id, db)
@@ -630,6 +641,15 @@ async def set_student_subjects(
     ]
     valid_subject_ids = {cs.subject_id for cs in valid_class_subjects}
 
+    requested_ids = set(body.subject_ids)
+    invalid_ids = requested_ids - valid_subject_ids
+    if invalid_ids:
+        raise HTTPException(
+            400,
+            f"Subject(s) not found as electives in this class: "
+            f"{[str(i) for i in invalid_ids]}",
+        )
+
     # SQL DELETE runs immediately on execute — avoids ORM flush ordering
     # issues that cause unique constraint violations when doing delete+insert
     # on the same key within a single flush.
@@ -851,11 +871,15 @@ async def set_subject_enrollments(
 @router.get("/subjects", response_model=List[SubjectResponse])
 async def list_subjects(
     user: CurrentUser, school: CurrentSchool, db: DB,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
 ):
     result = await db.execute(
         select(Subject)
         .where(Subject.school_id == school.id)
         .order_by(Subject.name)
+        .offset(skip)
+        .limit(limit)
     )
     return result.scalars().all()
 
@@ -1066,15 +1090,17 @@ async def graduate_student(
         raise HTTPException(400, f"Cannot graduate — status is '{enrollment.status}'")
 
     class_ = await _get_class(enrollment.class_id, school.id, db)
+    group_data = LEVEL_GROUPS.get(class_.level_group)
     is_final = (
-        (class_.level_group == "basic" and class_.level_number == 9) or
-        (class_.level_group == "shs" and class_.level_number == 3)
+        group_data is not None
+        and class_.level_number == max(group_data["levels"])
     )
     if not is_final:
+        final_level = max(group_data["levels"]) if group_data else "?"
         raise HTTPException(
             400,
-            f"Student is in '{class_.name}' which is not a final year class. "
-            f"Final years are Basic 9 and SHS 3.",
+            f"Student is in '{class_.name}' which is not a final year class "
+            f"(final level for {class_.level_group.upper()} is {final_level}).",
         )
 
     enrollment.status = "graduated"

@@ -44,7 +44,7 @@ class SchoolBrief(BaseModel):
     name: str
     slug: str
     school_type: str
-    accent_color: str
+    accent_color: Optional[str] = None
     logo_url: Optional[str] = None
 
     model_config = {"from_attributes": True}
@@ -52,14 +52,9 @@ class SchoolBrief(BaseModel):
 
 class TokenResponse(BaseModel):
     access_token: str
-    refresh_token: str
     token_type: str = "bearer"
     user: UserResponse
     school: Optional[SchoolBrief] = None
-
-
-class RefreshRequest(BaseModel):
-    refresh_token: str
 
 
 class RegisterRequest(SchoolCreate):

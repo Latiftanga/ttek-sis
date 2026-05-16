@@ -1,7 +1,7 @@
 import uuid
 from sqlalchemy import (
     Boolean, Column, String, Integer,
-    ForeignKey, DateTime, Date, func
+    ForeignKey, DateTime, Date, UniqueConstraint, func
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -34,6 +34,8 @@ class AcademicYear(Base):
     end_date   = Column(Date, nullable=False)
     is_current = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(),
+                       onupdate=func.now())
 
     school     = relationship("School", back_populates="academic_years")
     terms      = relationship("Term", back_populates="academic_year",
@@ -56,12 +58,17 @@ class Term(Base):
     end_date         = Column(Date, nullable=False)
     is_current       = Column(Boolean, default=False)
     created_at       = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at       = Column(DateTime(timezone=True), server_default=func.now(),
+                             onupdate=func.now())
 
     academic_year    = relationship("AcademicYear", back_populates="terms")
 
 
 class Class(Base):
     __tablename__ = "classes"
+    __table_args__ = (
+        UniqueConstraint("school_id", "name", name="uq_class_school_name"),
+    )
 
     id               = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     school_id        = Column(UUID(as_uuid=True),
@@ -123,6 +130,9 @@ class Class(Base):
           shs,       2, "B",  "ART"  → "2ART B"
           shs,       1, None, "BUS"  → "1BUS"
         """
+        if level_number is None:
+            return level_group.upper()
+
         # Pre-School: 0 = Creche, 1+ = Nursery N
         if level_group == "preschool":
             if level_number == 0:
@@ -169,10 +179,10 @@ class Class(Base):
             return "KG / Nursery"
         if self.level_group == "basic":
             if self.level_number and self.level_number in BASIC_BECE_LEVELS:
-                return "BECE / WASSCE"
+                return "BECE"
             return "Primary GES"
         if self.level_group == "shs":
-            return "BECE / WASSCE"
+            return "WASSCE"
         return "Primary GES"
 
 
@@ -188,3 +198,5 @@ class Subject(Base):
     category   = Column(String(20), nullable=True)
     # SHS only: "core" | "elective". NULL for basic schools.
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(),
+                       onupdate=func.now())

@@ -8,6 +8,12 @@ from sqlalchemy import select, func, and_
 from sqlalchemy.orm import selectinload
 
 from app.dependencies import CurrentUser, CurrentSchool, DB
+from app.utils import (
+    assert_class_in_school as _assert_class_in_school,
+    assert_term_in_school as _assert_term_in_school,
+    assert_subject_in_school as _assert_subject_in_school,
+    assert_students_in_school as _assert_students_in_school,
+)
 from app.models.school_period import SchoolPeriod
 from app.models.attendance import AttendanceSession, AttendanceRecord
 from app.models.academic import AcademicYear, Class, Term, Subject
@@ -252,17 +258,19 @@ async def submit_session(
         [r.student_id for r in body.records], school.id, db
     )
 
-    # Create attendance records
-    for record_input in body.records:
-        # Check student is enrolled in this class
-        existing = await db.execute(
-            select(AttendanceRecord).where(
-                AttendanceRecord.session_id == session_id,
-                AttendanceRecord.student_id == record_input.student_id,
-            )
+    # Batch-fetch already-recorded students to avoid N+1 on duplicate check
+    submitted_ids = [r.student_id for r in body.records]
+    already_res = await db.execute(
+        select(AttendanceRecord.student_id).where(
+            AttendanceRecord.session_id == session_id,
+            AttendanceRecord.student_id.in_(submitted_ids),
         )
-        if existing.scalar_one_or_none():
-            continue  # skip duplicates
+    )
+    already_recorded = {row[0] for row in already_res.all()}
+
+    for record_input in body.records:
+        if record_input.student_id in already_recorded:
+            continue
 
         record = AttendanceRecord(
             school_id=school.id,
@@ -882,53 +890,3 @@ async def _get_current_term(school_id: UUID, db: AsyncSession):
     return term
 
 
-async def _assert_class_in_school(
-    class_id: UUID, school_id: UUID, db: AsyncSession
-) -> None:
-    result = await db.execute(
-        select(Class.id).where(Class.id == class_id, Class.school_id == school_id)
-    )
-    if not result.scalar_one_or_none():
-        raise HTTPException(404, "Class not found")
-
-
-async def _assert_term_in_school(
-    term_id: UUID, school_id: UUID, db: AsyncSession
-) -> None:
-    result = await db.execute(
-        select(Term.id).where(Term.id == term_id, Term.school_id == school_id)
-    )
-    if not result.scalar_one_or_none():
-        raise HTTPException(404, "Term not found")
-
-
-async def _assert_subject_in_school(
-    subject_id: UUID, school_id: UUID, db: AsyncSession
-) -> None:
-    result = await db.execute(
-        select(Subject.id).where(
-            Subject.id == subject_id,
-            Subject.school_id == school_id,
-        )
-    )
-    if not result.scalar_one_or_none():
-        raise HTTPException(404, "Subject not found")
-
-
-async def _assert_students_in_school(
-    student_ids: list[UUID], school_id: UUID, db: AsyncSession
-) -> None:
-    if not student_ids:
-        return
-    unique_ids = list(set(student_ids))
-    result = await db.execute(
-        select(func.count(Student.id)).where(
-            Student.id.in_(unique_ids),
-            Student.school_id == school_id,
-        )
-    )
-    found = result.scalar() or 0
-    if found != len(unique_ids):
-        raise HTTPException(
-            400, "One or more student IDs do not belong to this school"
-        )
