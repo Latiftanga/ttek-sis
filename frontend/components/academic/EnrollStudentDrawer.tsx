@@ -45,11 +45,12 @@ export default function EnrollStudentDrawer({ open, classId, onClose }: Props) {
   const enroll = useEnrollStudent();
 
   const currentYear = years.find((y) => y.is_current);
+  const todayIso = new Date().toISOString().slice(0, 10);
 
   const { register, handleSubmit, reset, setValue, formState: { errors, isSubmitting } } =
     useForm<FormValues>({
       resolver: zodResolver(schema),
-      defaultValues: { academic_year_id: "", start_date: "", is_boarding: false },
+      defaultValues: { academic_year_id: "", start_date: todayIso, is_boarding: false },
     });
 
   useEffect(() => {
@@ -60,7 +61,7 @@ export default function EnrollStudentDrawer({ open, classId, onClose }: Props) {
     setSearch("");
     setDebouncedSearch("");
     setSelected(null);
-    reset({ academic_year_id: currentYear?.id ?? "", start_date: "", is_boarding: false });
+    reset({ academic_year_id: currentYear?.id ?? "", start_date: todayIso, is_boarding: false });
     onClose();
   }
 
@@ -169,6 +170,10 @@ export default function EnrollStudentDrawer({ open, classId, onClose }: Props) {
             error={errors.start_date?.message}
             {...register("start_date")}
           />
+          <p className="-mt-3 text-xs text-gray-500 dark:text-gray-400">
+            The day this student actually joins the class. They will not appear
+            on any assessment from before this date.
+          </p>
 
           <div className="flex items-center gap-3">
             <input

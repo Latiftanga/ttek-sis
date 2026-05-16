@@ -964,7 +964,18 @@ async def enroll_student(
     class_ = await _get_class(body.class_id, school.id, db)
     if not class_.is_active:
         raise HTTPException(400, "Class is inactive")
-    await _get_year(body.academic_year_id, school.id, db)
+    year = await _get_year(body.academic_year_id, school.id, db)
+
+    # Enrollment must start within the chosen academic year — otherwise the
+    # gradebook's term-window filter (start_date <= term.end_date) misbehaves
+    # and the student appears in (or vanishes from) past/future terms.
+    if not (year.start_date <= body.start_date <= year.end_date):
+        raise HTTPException(
+            400,
+            f"Start date {body.start_date} is outside the academic year "
+            f"'{year.name}' ({year.start_date} to {year.end_date}). "
+            f"Use the day this student actually joins the class.",
+        )
 
     exists = await db.execute(
         select(Enrollment).where(

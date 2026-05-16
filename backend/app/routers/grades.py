@@ -5,7 +5,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, delete as sql_delete
 from sqlalchemy.orm import selectinload
 
 from app.dependencies import CurrentUser, CurrentSchool, DB
@@ -231,7 +231,19 @@ async def create_assessment(
     # Tenant boundary — class/subject/term must belong to this school
     await _assert_class_in_school(body.class_id, school.id, db)
     await _assert_subject_in_school(body.subject_id, school.id, db)
-    await _assert_term_in_school(body.term_id, school.id, db)
+    term = await _get_term(body.term_id, school.id, db)
+
+    # Assessment date must fall within the chosen term — otherwise the
+    # gradebook roster (which filters by term.end_date) becomes inconsistent.
+    if body.date_administered is not None and not (
+        term.start_date <= body.date_administered <= term.end_date
+    ):
+        raise HTTPException(
+            400,
+            f"Assessment date {body.date_administered} is outside the term "
+            f"'{term.name}' ({term.start_date} to {term.end_date}). "
+            f"Pick a date within the term, or choose a different term."
+        )
 
     # Validate max_score doesn't exceed category max
     if body.max_score > category.max_score:
@@ -288,11 +300,57 @@ async def update_assessment(
             400,
             "Cannot edit a published assessment. Unpublish first."
         )
+
+    # If date_administered is being changed, re-validate against the term.
+    if body.date_administered is not None:
+        term = await _get_term(assessment.term_id, school.id, db)
+        if not (term.start_date <= body.date_administered <= term.end_date):
+            raise HTTPException(
+                400,
+                f"Assessment date {body.date_administered} is outside the term "
+                f"'{term.name}' ({term.start_date} to {term.end_date}). "
+                f"Pick a date within the term."
+            )
+
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(assessment, field, value)
     await db.commit()
     await db.refresh(assessment)
     return assessment
+
+
+@router.delete("/{assessment_id}", status_code=204)
+async def delete_assessment(
+    assessment_id: UUID, user: CurrentUser, school: CurrentSchool, db: DB,
+):
+    """
+    Delete a draft assessment along with its scores and any draft edit logs.
+    Published assessments must be unpublished first — this protects the
+    WAEC-grade audit trail from accidental wipes.
+    """
+    assessment = await _get_assessment(assessment_id, school.id, db)
+    if assessment.is_published:
+        raise HTTPException(
+            400,
+            "Cannot delete a published assessment. Unpublish it first.",
+        )
+
+    # Wipe edit logs for this assessment's scores before the cascade fires —
+    # ScoreEditLog has no ondelete cascade so an orphan FK would block us.
+    # Safe because the assessment was never published, so nothing of audit
+    # value lives in these logs yet.
+    score_ids_subq = select(AssessmentScore.id).where(
+        AssessmentScore.assessment_id == assessment_id,
+    )
+    await db.execute(
+        sql_delete(ScoreEditLog).where(
+            ScoreEditLog.assessment_score_id.in_(score_ids_subq),
+        )
+    )
+
+    # Scores cascade-delete via the Assessment.scores relationship.
+    await db.delete(assessment)
+    await db.commit()
 
 
 @router.post("/{assessment_id}/publish", response_model=AssessmentResponse)

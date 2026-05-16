@@ -195,6 +195,17 @@ export function useUpdateAssessment(assessmentId: string) {
   });
 }
 
+export function useDeleteAssessment() {
+  const slug = useSlug();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (assessmentId: string) => assessmentsApi.delete(assessmentId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [slug, "assessments"] });
+    },
+  });
+}
+
 export function usePublishAssessment(assessmentId: string) {
   const slug = useSlug();
   const qc = useQueryClient();

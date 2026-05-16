@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useMemo, useRef } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import toast from "react-hot-toast";
 import { useForm } from "react-hook-form";
@@ -16,6 +16,7 @@ import {
   Pencil,
   Sparkles,
   History,
+  Trash2,
 } from "lucide-react";
 import { useAuthStore } from "@/lib/store";
 import { useClasses, useSubjects } from "@/lib/hooks/useAcademic";
@@ -27,14 +28,18 @@ import {
   useUnpublishAssessment,
   useEditScore,
   useScoreHistory,
+  useUpdateAssessment,
+  useDeleteAssessment,
 } from "@/lib/hooks/useAssessments";
 import { getApiError, getInitials, formatDate, cn } from "@/lib/utils";
-import type { GradebookEntry } from "@/lib/api";
+import type { GradebookEntry, Assessment } from "@/lib/api";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import Drawer from "@/components/ui/Drawer";
 import Input from "@/components/ui/Input";
 import Textarea from "@/components/ui/Textarea";
+import ConfirmSheet from "@/components/ui/ConfirmSheet";
+import ActionMenu from "@/components/ui/ActionMenu";
 
 const ADMIN_ROLES = new Set(["school_admin", "headteacher"]);
 
@@ -45,6 +50,7 @@ interface Mark {
 
 export default function ScoreEntryPage() {
   const params = useParams<{ assessmentId: string }>();
+  const router = useRouter();
   const assessmentId = params.assessmentId;
   const { user } = useAuthStore();
   const isAdmin = !!user?.role && ADMIN_ROLES.has(user.role);
@@ -57,6 +63,7 @@ export default function ScoreEntryPage() {
   const bulkScore = useBulkScore(assessmentId);
   const publish = usePublishAssessment(assessmentId);
   const unpublish = useUnpublishAssessment(assessmentId);
+  const deleteAssessment = useDeleteAssessment();
 
   // Local edits keyed by student_id (draft-only quick entry)
   const [marks, setMarks] = useState<Record<string, Mark>>({});
@@ -64,6 +71,20 @@ export default function ScoreEntryPage() {
 
   // Per-row edit modal (used for published edits + history view)
   const [editTarget, setEditTarget] = useState<GradebookEntry | null>(null);
+
+  // Assessment-level edit + delete (drafts only)
+  const [editAssessmentOpen, setEditAssessmentOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  async function handleDeleteAssessment() {
+    try {
+      await deleteAssessment.mutateAsync(assessmentId);
+      toast.success("Assessment deleted");
+      router.push("/assessments");
+    } catch (err) {
+      toast.error(getApiError(err, "Could not delete the assessment."));
+    }
+  }
 
   // Initialize local state from server data
   useEffect(() => {
@@ -244,14 +265,33 @@ export default function ScoreEntryPage() {
               <span>Out of {maxScore}</span>
             </p>
           </div>
-          {isPublished ? (
-            <Badge variant="green" className="gap-1">
-              <CheckCircle2 className="h-3 w-3" />
-              Published
-            </Badge>
-          ) : (
-            <Badge variant="gray">Draft</Badge>
-          )}
+          <div className="flex items-center gap-2">
+            {isPublished ? (
+              <Badge variant="green" className="gap-1">
+                <CheckCircle2 className="h-3 w-3" />
+                Published
+              </Badge>
+            ) : (
+              <Badge variant="gray">Draft</Badge>
+            )}
+            {!isPublished && (
+              <ActionMenu
+                items={[
+                  {
+                    label: "Edit details",
+                    icon: <Pencil className="h-4 w-4" />,
+                    onClick: () => setEditAssessmentOpen(true),
+                  },
+                  {
+                    label: "Delete assessment",
+                    icon: <Trash2 className="h-4 w-4" />,
+                    onClick: () => setConfirmDelete(true),
+                    variant: "danger",
+                  },
+                ]}
+              />
+            )}
+          </div>
         </div>
 
         {isPublished && (
@@ -319,6 +359,31 @@ export default function ScoreEntryPage() {
           onClose={() => setEditTarget(null)}
         />
       )}
+
+      {/* Edit assessment-level details (drafts only) */}
+      <EditAssessmentDrawer
+        open={editAssessmentOpen}
+        onClose={() => setEditAssessmentOpen(false)}
+        assessment={assessment}
+        categoryMaxScore={Number(category?.max_score ?? maxScore)}
+      />
+
+      {/* Delete confirm (drafts only) */}
+      <ConfirmSheet
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        title="Delete this assessment?"
+        description={
+          <>
+            <strong>{assessment.title}</strong> and any draft scores will be
+            permanently removed. This cannot be undone.
+          </>
+        }
+        confirmLabel="Delete"
+        variant="danger"
+        loading={deleteAssessment.isPending}
+        onConfirm={handleDeleteAssessment}
+      />
     </div>
   );
 }
@@ -493,6 +558,115 @@ function ActionBar({
         </div>
       </div>
     </div>
+  );
+}
+
+// ── Edit assessment drawer (drafts only) ─────────────────────────────────
+
+function EditAssessmentDrawer({
+  open,
+  onClose,
+  assessment,
+  categoryMaxScore,
+}: {
+  open: boolean;
+  onClose: () => void;
+  assessment: Assessment;
+  categoryMaxScore: number;
+}) {
+  const update = useUpdateAssessment(assessment.id);
+
+  const schema = useMemo(
+    () =>
+      z.object({
+        title: z.string().trim().min(1, "Give it a title"),
+        date_administered: z.string().optional(),
+        max_score: z.coerce
+          .number({ message: "Must be a number" })
+          .positive("Must be greater than 0")
+          .max(categoryMaxScore, `Max ${categoryMaxScore} for this mode`),
+      }),
+    [categoryMaxScore],
+  );
+  type Values = z.infer<typeof schema>;
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors, isSubmitting },
+  } = useForm<Values>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      title: assessment.title,
+      date_administered: assessment.date_administered ?? "",
+      max_score: Number(assessment.max_score),
+    },
+  });
+
+  useEffect(() => {
+    if (open) {
+      reset({
+        title: assessment.title,
+        date_administered: assessment.date_administered ?? "",
+        max_score: Number(assessment.max_score),
+      });
+    }
+  }, [open, assessment, reset]);
+
+  async function onSubmit(values: Values) {
+    try {
+      await update.mutateAsync({
+        title: values.title.trim(),
+        date_administered: values.date_administered || null,
+        max_score: values.max_score,
+      });
+      toast.success("Assessment updated");
+      onClose();
+    } catch (err) {
+      toast.error(getApiError(err, "Could not update the assessment."));
+    }
+  }
+
+  return (
+    <Drawer open={open} onClose={onClose} title="Edit assessment">
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
+        <Input
+          id="ea_title"
+          label="Title *"
+          error={errors.title?.message}
+          {...register("title")}
+        />
+        <Input
+          id="ea_date"
+          label="Date"
+          type="date"
+          error={errors.date_administered?.message}
+          {...register("date_administered")}
+        />
+        <p className="-mt-2 text-xs text-gray-500 dark:text-gray-400">
+          Must fall within the term. To move it to a different term, delete
+          this assessment and create a new one.
+        </p>
+        <Input
+          id="ea_max_score"
+          label="Max score *"
+          type="number"
+          min={0}
+          step="0.5"
+          error={errors.max_score?.message}
+          {...register("max_score")}
+        />
+        <div className="flex justify-end gap-3 border-t border-gray-100 pt-4 dark:border-gray-800">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" loading={isSubmitting}>
+            Save changes
+          </Button>
+        </div>
+      </form>
+    </Drawer>
   );
 }
 
