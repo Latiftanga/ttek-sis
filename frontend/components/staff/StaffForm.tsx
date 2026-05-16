@@ -178,18 +178,42 @@ export default function StaffForm({ staff, onSuccess, onCancel }: StaffFormProps
 
       {/* Employment */}
       <div className="grid grid-cols-2 gap-4">
-        <Input id="staff_number" label="Staff Number" placeholder="TCH001" {...register("staff_number")} />
+        <Input
+          id="staff_number"
+          label="Staff Number"
+          placeholder="TCH001"
+          hint="Your school's or GES staff ID. Optional — can be added later."
+          {...register("staff_number")}
+        />
         <Input id="phone" label="Phone" type="tel" placeholder="+233 24 000 0000" {...register("phone")} />
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <Input id="date_of_birth" label="Date of Birth" type="date" {...register("date_of_birth")} />
-        <Input id="date_joined"   label="Date Joined"   type="date" {...register("date_joined")} />
+        <Input
+          id="date_joined"
+          label="Date Joined"
+          type="date"
+          hint="The date they started working at this school."
+          {...register("date_joined")}
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <Input id="license_number" label="Licence Number" placeholder="TCH-00000" {...register("license_number")} />
-        <Input id="specialization" label="Specialization" placeholder="Mathematics, Physics" {...register("specialization")} />
+        <Input
+          id="license_number"
+          label="Licence Number"
+          placeholder="TCH-00000"
+          hint="GES professional teaching licence number, if they have one."
+          {...register("license_number")}
+        />
+        <Input
+          id="specialization"
+          label="Specialization"
+          placeholder="Mathematics, Physics"
+          hint="Subjects or areas they teach or manage."
+          {...register("specialization")}
+        />
       </div>
 
       {isEdit && (
@@ -229,7 +253,12 @@ export default function StaffForm({ staff, onSuccess, onCancel }: StaffFormProps
                 error={errors.email?.message}
                 {...register("email")}
               />
-              <Select id="role" label="Role" {...register("role")}>
+              <Select
+                id="role"
+                label="Role"
+                hint="Controls what this person can see and do in the system."
+                {...register("role")}
+              >
                 {ROLES.map((r) => (
                   <option key={r.value} value={r.value}>{r.label}</option>
                 ))}

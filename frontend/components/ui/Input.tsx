@@ -4,10 +4,16 @@ import { InputHTMLAttributes, forwardRef } from "react";
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string;
   error?: string;
+  hint?: string;
 }
 
 const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ className, label, error, id, ...props }, ref) => {
+  ({ className, label, error, hint, id, ...props }, ref) => {
+    const describedBy = [
+      hint && !error && id ? `${id}-hint` : null,
+      error && id ? `${id}-error` : null,
+    ].filter(Boolean).join(" ") || undefined;
+
     return (
       <div className="flex flex-col gap-1.5">
         {label && (
@@ -22,7 +28,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
           id={id}
           ref={ref}
           aria-invalid={!!error}
-          aria-describedby={error && id ? `${id}-error` : undefined}
+          aria-describedby={describedBy}
           className={cn(
             "h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400",
             "focus:border-[var(--brand)] focus:outline-none focus:ring-2 focus:ring-[var(--brand)]/20",
@@ -36,6 +42,11 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
           )}
           {...props}
         />
+        {hint && !error && (
+          <p id={id ? `${id}-hint` : undefined} className="text-xs text-gray-400 dark:text-gray-500">
+            {hint}
+          </p>
+        )}
         {error && (
           <p
             id={id ? `${id}-error` : undefined}

@@ -38,13 +38,25 @@ export const ROLES: Record<string, string> = {
   accountant: "Accountant",
 };
 
+// Maps known backend error substrings to plain-English messages with a next step.
+const ERROR_HINTS: [RegExp, string][] = [
+  [/already enrolled/i,          "This student is already enrolled in a class. Go to their profile to transfer or promote them instead."],
+  [/overlap/i,                    "These dates overlap with an existing record. Please adjust the dates and try again."],
+  [/duplicate|already exists/i,  "A record with this information already exists. Check for duplicates before adding again."],
+  [/in use|being used|still.*used|is.*referenced/i, "This cannot be removed because it is still linked to other records."],
+  [/not found/i,                  "This record no longer exists — it may have been deleted. Try refreshing the page."],
+  [/invalid.*date|date.*invalid/i, "One of the dates entered is not valid. Please check and try again."],
+  [/maximum.*exceeded|limit.*exceeded/i, "The maximum allowed number has been reached. Remove an existing entry first."],
+];
+
 // Turn an Axios/Fetch error into a sentence a non-technical user can read.
 // Order of preference:
-//   1. A string `detail` from FastAPI's HTTPException (most specific)
-//   2. The first message from a 422 validation array, prefixed with the field
-//   3. A status-code default (401, 403, 404, 409, 429, 5xx)
-//   4. A network/timeout default (no response received)
-//   5. The caller-provided fallback
+//   1. A known-pattern match on the string detail (most actionable)
+//   2. A raw string `detail` from FastAPI's HTTPException
+//   3. The first message from a 422 validation array
+//   4. A status-code default (401, 403, 404, 409, 429, 5xx)
+//   5. A network/timeout default
+//   6. The caller-provided fallback
 export function getApiError(
   err: unknown,
   fallback = "Something went wrong. Please try again.",
@@ -57,33 +69,38 @@ export function getApiError(
 
   const detail = e?.response?.data?.detail;
 
-  if (typeof detail === "string" && detail.trim()) return detail;
+  if (typeof detail === "string" && detail.trim()) {
+    for (const [pattern, friendly] of ERROR_HINTS) {
+      if (pattern.test(detail)) return friendly;
+    }
+    return detail;
+  }
 
   if (Array.isArray(detail) && detail.length > 0) {
     const first = detail[0] as { msg?: string; loc?: unknown[] };
     if (typeof first?.msg === "string" && first.msg) {
       const loc = Array.isArray(first.loc) ? first.loc : [];
-      const field = loc.length > 1 ? String(loc[loc.length - 1]) : null;
-      return field ? `${field}: ${first.msg}` : first.msg;
+      const field = loc.length > 1 ? String(loc[loc.length - 1]).replace(/_/g, " ") : null;
+      return field ? `Please check the "${field}" field: ${first.msg.toLowerCase()}` : first.msg;
     }
-    return "Some fields need attention. Please check the form.";
+    return "Some fields need attention. Please check the form and try again.";
   }
 
   const status = e?.response?.status;
   if (status === 401) return "Your session has expired. Please sign in again.";
-  if (status === 403) return "You don't have permission to do that.";
-  if (status === 404) return "Not found.";
-  if (status === 409) return "That conflicts with existing data.";
-  if (status === 429) return "Too many requests. Please wait a moment.";
+  if (status === 403) return "You don't have permission to do that. Contact your school admin if this is a mistake.";
+  if (status === 404) return "This record could not be found — it may have been deleted. Try refreshing the page.";
+  if (status === 409) return "This information conflicts with an existing record. Check for duplicates and try again.";
+  if (status === 429) return "Too many requests. Please wait a moment and try again.";
   if (typeof status === "number" && status >= 500) {
-    return "Server error. Please try again in a moment.";
+    return "The server encountered a problem. Please try again in a moment, or contact support if this keeps happening.";
   }
 
   if (e?.code === "ERR_NETWORK" || e?.message === "Network Error") {
-    return "Could not reach the server. Check your internet and try again.";
+    return "Could not reach the server. Check your internet connection and try again.";
   }
   if (e?.code === "ECONNABORTED") {
-    return "The request took too long. Please try again.";
+    return "The request took too long. Check your connection and try again.";
   }
 
   return fallback;

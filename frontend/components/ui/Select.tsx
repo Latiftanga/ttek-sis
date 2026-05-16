@@ -4,11 +4,17 @@ import { SelectHTMLAttributes, forwardRef } from "react";
 interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
   label?: string;
   error?: string;
+  hint?: string;
   placeholder?: string;
 }
 
 const Select = forwardRef<HTMLSelectElement, SelectProps>(
-  ({ className, label, error, id, placeholder, children, ...props }, ref) => {
+  ({ className, label, error, hint, id, placeholder, children, ...props }, ref) => {
+    const describedBy = [
+      hint && !error && id ? `${id}-hint` : null,
+      error && id ? `${id}-error` : null,
+    ].filter(Boolean).join(" ") || undefined;
+
     return (
       <div className="flex flex-col gap-1.5">
         {label && (
@@ -23,7 +29,7 @@ const Select = forwardRef<HTMLSelectElement, SelectProps>(
           id={id}
           ref={ref}
           aria-invalid={!!error}
-          aria-describedby={error && id ? `${id}-error` : undefined}
+          aria-describedby={describedBy}
           className={cn(
             "h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900",
             "focus:border-[var(--brand)] focus:outline-none focus:ring-2 focus:ring-[var(--brand)]/20",
@@ -43,6 +49,11 @@ const Select = forwardRef<HTMLSelectElement, SelectProps>(
           )}
           {children}
         </select>
+        {hint && !error && (
+          <p id={id ? `${id}-hint` : undefined} className="text-xs text-gray-400 dark:text-gray-500">
+            {hint}
+          </p>
+        )}
         {error && (
           <p
             id={id ? `${id}-error` : undefined}

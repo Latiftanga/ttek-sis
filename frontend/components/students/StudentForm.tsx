@@ -166,6 +166,7 @@ export default function StudentForm({ student, onSuccess, onCancel }: StudentFor
             label="Student Number *"
             placeholder="e.g. SHS001"
             disabled={isEdit}
+            hint={isEdit ? "Student number cannot be changed after saving." : "A unique ID for this student — e.g. their GES index number or your school's own numbering."}
             error={errors.student_number?.message}
             {...register("student_number")}
           />
@@ -188,7 +189,14 @@ export default function StudentForm({ student, onSuccess, onCancel }: StudentFor
 
       <div className="grid grid-cols-2 gap-4">
         <Input id="date_of_birth" label="Date of Birth" type="date" error={errors.date_of_birth?.message} {...register("date_of_birth")} />
-        <Input id="admission_date" label="Admission Date" type="date" error={errors.admission_date?.message} {...register("admission_date")} />
+        <Input
+          id="admission_date"
+          label="Admission Date"
+          type="date"
+          hint="The date this student first joined the school."
+          error={errors.admission_date?.message}
+          {...register("admission_date")}
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -210,7 +218,14 @@ export default function StudentForm({ student, onSuccess, onCancel }: StudentFor
 
       <Textarea id="home_address" label="Home Address" placeholder="P.O. Box 123, Accra" error={errors.home_address?.message} {...register("home_address")} />
 
-      <Textarea id="notes" label="Notes" placeholder="e.g. Scholarship student, transferred from Accra Academy" error={errors.notes?.message} {...register("notes")} />
+      <Textarea
+        id="notes"
+        label="Notes"
+        placeholder="e.g. Scholarship student, transferred from Accra Academy"
+        hint="Anything useful to know about this student — visible only to staff."
+        error={errors.notes?.message}
+        {...register("notes")}
+      />
 
       {/* class enrollment (create only) */}
       {!isEdit && (

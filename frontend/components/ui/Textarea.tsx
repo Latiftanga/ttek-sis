@@ -4,10 +4,16 @@ import { TextareaHTMLAttributes, forwardRef } from "react";
 interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   label?: string;
   error?: string;
+  hint?: string;
 }
 
 const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
-  ({ className, label, error, id, ...props }, ref) => {
+  ({ className, label, error, hint, id, ...props }, ref) => {
+    const describedBy = [
+      hint && !error && id ? `${id}-hint` : null,
+      error && id ? `${id}-error` : null,
+    ].filter(Boolean).join(" ") || undefined;
+
     return (
       <div className="flex flex-col gap-1.5">
         {label && (
@@ -22,7 +28,7 @@ const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
           id={id}
           ref={ref}
           aria-invalid={!!error}
-          aria-describedby={error && id ? `${id}-error` : undefined}
+          aria-describedby={describedBy}
           rows={3}
           className={cn(
             "w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400",
@@ -36,6 +42,11 @@ const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
           )}
           {...props}
         />
+        {hint && !error && (
+          <p id={id ? `${id}-hint` : undefined} className="text-xs text-gray-400 dark:text-gray-500">
+            {hint}
+          </p>
+        )}
         {error && (
           <p
             id={id ? `${id}-error` : undefined}
