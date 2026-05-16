@@ -30,10 +30,10 @@ const quickActions = [
     color: "from-blue-500 to-blue-600",
   },
   {
-    href: "/staff",
-    label: "Manage staff",
-    desc: "Teachers & administrators",
-    icon: "👥",
+    href: "/assessments",
+    label: "Enter assessments",
+    desc: "Record test scores",
+    icon: "📝",
     color: "from-violet-500 to-violet-600",
   },
   {

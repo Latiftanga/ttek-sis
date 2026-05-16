@@ -12,18 +12,18 @@ import {
   UserCog,
   BookOpen,
   CalendarCheck,
-  GraduationCap,
+  ClipboardList,
   LogOut,
   X,
 } from "lucide-react";
 
 const navItems = [
-  { href: "/dashboard",  label: "Dashboard",  icon: LayoutDashboard },
-  { href: "/students",   label: "Students",   icon: Users },
-  { href: "/staff",      label: "Staff",      icon: UserCog },
-  { href: "/academic",   label: "Academic",   icon: BookOpen },
-  { href: "/attendance", label: "Attendance", icon: CalendarCheck },
-  { href: "/grades",     label: "Gradebook",  icon: GraduationCap },
+  { href: "/dashboard",   label: "Dashboard",   icon: LayoutDashboard },
+  { href: "/students",    label: "Students",    icon: Users },
+  { href: "/staff",       label: "Staff",       icon: UserCog },
+  { href: "/academic",    label: "Academic",    icon: BookOpen },
+  { href: "/attendance",  label: "Attendance",  icon: CalendarCheck },
+  { href: "/assessments", label: "Assessments", icon: ClipboardList },
 ];
 
 interface SidebarProps {

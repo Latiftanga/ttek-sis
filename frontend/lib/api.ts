@@ -500,22 +500,171 @@ export const attendanceApi = {
       .then((r) => r.data),
 };
 
-// ── Grades ──────────────────────────────────────────────────────────────
-export const gradesApi = {
-  listScales: () =>
+// ── Assessments ─────────────────────────────────────────────────────────
+// "Assessment" is the term used in Ghanaian schools for tests/exercises/exams.
+// "Grade" is reserved for the letter (A, B, C, F9) assigned by a grading scale.
+
+export interface AssessmentCategory {
+  id: string;
+  school_id: string;
+  name: string;
+  weight: number;
+  max_score: number;
+  is_ca: boolean;
+  allows_multiple: boolean;
+  order: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface Assessment {
+  id: string;
+  school_id: string;
+  category_id: string;
+  class_id: string;
+  subject_id: string;
+  term_id: string;
+  title: string;
+  date_administered: string | null;
+  max_score: number;
+  is_published: boolean;
+  created_by: string;
+  created_at: string;
+}
+
+export interface AssessmentCreateBody {
+  category_id: string;
+  class_id: string;
+  subject_id: string;
+  term_id: string;
+  title: string;
+  date_administered?: string | null;
+  max_score: number;
+}
+
+export interface AssessmentUpdateBody {
+  title?: string;
+  date_administered?: string | null;
+  max_score?: number;
+}
+
+export interface GradingBand {
+  id: string;
+  min_score: number;
+  max_score: number;
+  grade_label: string;
+  remark: string | null;
+  order: number;
+}
+
+export interface GradingScale {
+  id: string;
+  school_id: string | null;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+  bands: GradingBand[];
+}
+
+export interface GradebookEntry {
+  student_id: string;
+  student_number: string;
+  first_name: string;
+  middle_name: string | null;
+  last_name: string;
+  score: number | null;
+  is_absent: boolean;
+  remarks: string | null;
+  is_edited: boolean;
+  score_id: string | null;
+}
+
+export interface GradebookResponse {
+  assessment: Assessment;
+  entries: GradebookEntry[];
+  total_students: number;
+  scores_entered: number;
+  scores_missing: number;
+}
+
+export interface ScoreInput {
+  student_id: string;
+  score?: number | null;
+  is_absent?: boolean;
+  remarks?: string | null;
+}
+
+export interface BulkScoreBody {
+  records: ScoreInput[];
+  client_id?: string;
+}
+
+export interface ScoreEditBody {
+  score?: number | null;
+  is_absent?: boolean;
+  remarks?: string | null;
+  reason?: string | null;
+}
+
+export interface ScoreEditLog {
+  id: string;
+  assessment_score_id: string;
+  changed_by: string;
+  changed_at: string;
+  old_score: number | null;
+  new_score: number | null;
+  reason: string | null;
+  is_after_submission: boolean;
+  is_after_lock: boolean;
+}
+
+export const assessmentsApi = {
+  listScales: (): Promise<GradingScale[]> =>
     api.get("/assessments/grading-scales").then((r) => r.data),
-  listCategories: (params?: Record<string, string>) =>
+
+  listCategories: (params?: Record<string, string>): Promise<AssessmentCategory[]> =>
     api.get("/assessments/categories", { params }).then((r) => r.data),
-  createCategory: (body: unknown) =>
+  createCategory: (body: unknown): Promise<AssessmentCategory> =>
     api.post("/assessments/categories", body).then((r) => r.data),
-  listAssessments: (params?: Record<string, string>) =>
-    api.get("/assessments/", { params }).then((r) => r.data),
-  createAssessment: (body: unknown) =>
-    api.post("/assessments/", body).then((r) => r.data),
-  getGradebook: (assessmentId: string) =>
-    api.get(`/assessments/${assessmentId}/gradebook`).then((r) => r.data),
-  bulkScore: (assessmentId: string, body: unknown) =>
+  updateCategory: (id: string, body: unknown): Promise<AssessmentCategory> =>
+    api.patch(`/assessments/categories/${id}`, body).then((r) => r.data),
+  deleteCategory: (id: string): Promise<void> =>
+    api.delete(`/assessments/categories/${id}`).then(() => undefined),
+
+  createScale: (body: { name: string; description?: string }): Promise<GradingScale> =>
+    api.post("/assessments/grading-scales", body).then((r) => r.data),
+  addBand: (
+    scaleId: string,
+    body: {
+      min_score: number;
+      max_score: number;
+      grade_label: string;
+      remark?: string;
+      order: number;
+    },
+  ): Promise<GradingBand> =>
     api
-      .post(`/assessments/${assessmentId}/scores/bulk`, body)
+      .post(`/assessments/grading-scales/${scaleId}/bands`, body)
       .then((r) => r.data),
+
+  list: (params?: Record<string, string>): Promise<Assessment[]> =>
+    api.get("/assessments/", { params }).then((r) => r.data),
+  create: (body: AssessmentCreateBody): Promise<Assessment> =>
+    api.post("/assessments/", body).then((r) => r.data),
+  update: (id: string, body: AssessmentUpdateBody): Promise<Assessment> =>
+    api.patch(`/assessments/${id}`, body).then((r) => r.data),
+  publish: (id: string): Promise<Assessment> =>
+    api.post(`/assessments/${id}/publish`).then((r) => r.data),
+  unpublish: (id: string): Promise<Assessment> =>
+    api.post(`/assessments/${id}/unpublish`).then((r) => r.data),
+
+  getGradebook: (id: string): Promise<GradebookResponse> =>
+    api.get(`/assessments/${id}/gradebook`).then((r) => r.data),
+  bulkScore: (id: string, body: BulkScoreBody) =>
+    api.post(`/assessments/${id}/scores/bulk`, body).then((r) => r.data),
+  editScore: (id: string, studentId: string, body: ScoreEditBody) =>
+    api.patch(`/assessments/${id}/scores/${studentId}`, body).then((r) => r.data),
+  getScoreHistory: (id: string, studentId: string): Promise<ScoreEditLog[]> =>
+    api.get(`/assessments/${id}/scores/${studentId}/history`).then((r) => r.data),
 };
+
