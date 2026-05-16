@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import {
@@ -125,6 +125,7 @@ function exportToCsv(students: Student[], filename: string) {
 }
 
 export default function StudentsPage() {
+  const router = useRouter();
   const { user, school } = useAuthStore();
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
@@ -402,12 +403,13 @@ export default function StudentsPage() {
                 students.map((s) => (
                   <tr
                     key={s.id}
-                    className={`transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40 ${
+                    onClick={() => router.push(`/students/${s.id}`)}
+                    className={`cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40 ${
                       selectedIds.has(s.id) ? "bg-[var(--brand)]/5 dark:bg-[var(--brand)]/10" : ""
                     } ${isFetching ? "opacity-60" : ""}`}
                   >
                     {canManage && (
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                         <input
                           type="checkbox"
                           aria-label={`Select ${s.first_name} ${s.last_name}`}
@@ -461,7 +463,7 @@ export default function StudentsPage() {
                         {s.status.charAt(0).toUpperCase() + s.status.slice(1)}
                       </Badge>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <ActionMenu items={[
                         { label: "View Profile", icon: <Eye className="h-4 w-4" />, href: `/students/${s.id}` },
                         ...(canManage ? [{ label: "Edit", icon: <Pencil className="h-4 w-4" />, onClick: () => handleEdit(s) }] : []),

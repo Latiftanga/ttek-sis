@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   Search, UserPlus, Users, ChevronLeft, ChevronRight,
@@ -79,6 +80,7 @@ function SkeletonRow() {
 }
 
 export default function StaffPage() {
+  const router = useRouter();
   const [search, setSearch]               = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusTab, setStatusTab]         = useState("");
@@ -224,7 +226,8 @@ export default function StaffPage() {
                 members.map((member) => (
                   <tr
                     key={member.id}
-                    className={`transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40 ${isFetching ? "opacity-60" : ""}`}
+                    onClick={() => router.push(`/staff/${member.id}`)}
+                    className={`cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40 ${isFetching ? "opacity-60" : ""}`}
                   >
                     <td className="px-4 py-3">
                       <Link href={`/staff/${member.id}`} className="flex items-center gap-3 group">
@@ -265,7 +268,7 @@ export default function StaffPage() {
                     <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
                       {member.date_joined ? formatDate(member.date_joined) : "—"}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <ActionMenu items={[
                         { label: "View", icon: <Eye className="h-4 w-4" />, href: `/staff/${member.id}` },
                         { label: "Edit", icon: <Pencil className="h-4 w-4" />, onClick: () => openEdit(member) },
