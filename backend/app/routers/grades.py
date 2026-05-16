@@ -363,12 +363,17 @@ async def get_gradebook(
         raise HTTPException(404, "No current academic year set")
 
     # Determine if this is an elective subject so we can filter to only
-    # students who selected it.
+    # students who selected it. Electives are an SHS-only concept; for any
+    # other school type, every enrolled student takes every subject.
     subject_res = await db.execute(
         select(Subject).where(Subject.id == assessment.subject_id)
     )
     subject = subject_res.scalar_one_or_none()
-    is_elective = subject and subject.category == "elective"
+    is_elective = (
+        subject is not None
+        and subject.category == "elective"
+        and school.school_type == "shs"
+    )
 
     # Base enrollment query: only students present during this term.
     enrollment_q = (

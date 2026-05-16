@@ -925,7 +925,11 @@ async def update_subject(
     subject = result.scalar_one_or_none()
     if not subject:
         raise HTTPException(404, "Subject not found")
-    for field, value in body.model_dump(exclude_unset=True).items():
+    updates = body.model_dump(exclude_unset=True)
+    # Category is meaningful only for SHS schools — mirror create-time rule.
+    if school.school_type != "shs":
+        updates["category"] = None
+    for field, value in updates.items():
         setattr(subject, field, value)
     await db.commit()
     await db.refresh(subject)
