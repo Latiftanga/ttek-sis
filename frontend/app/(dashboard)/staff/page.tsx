@@ -187,7 +187,7 @@ export default function StaffPage() {
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
 
         {/* Desktop table */}
-        <div className="hidden overflow-x-auto sm:block">
+        <div className="hidden overflow-x-auto md:block">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/60">
@@ -283,7 +283,7 @@ export default function StaffPage() {
         </div>
 
         {/* Mobile card list */}
-        <div className="sm:hidden divide-y divide-gray-100 dark:divide-gray-700">
+        <div className="md:hidden divide-y divide-gray-100 dark:divide-gray-700">
           {isLoading
             ? Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="flex animate-pulse items-center gap-3 p-4" aria-hidden="true">
