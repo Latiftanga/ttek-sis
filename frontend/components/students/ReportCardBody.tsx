@@ -9,6 +9,7 @@ import type {
   SchoolProfile,
   StudentTermReport,
   SubjectBreakdown,
+  TermReportCard,
 } from "@/lib/api";
 
 // ── Formatters ─────────────────────────────────────────────────────────────
@@ -331,14 +332,22 @@ export default function ReportCardBody({
 
           {/* Remark blocks */}
           <div className="space-y-3 text-sm lg:col-span-2 print:col-span-2">
-            <RemarkBlock label="Class Teacher's Remark" accent={accent} />
-            <RemarkBlock label="Headteacher's Remark" accent={accent} />
+            <RemarkBlock
+              label="Class Teacher's Remark"
+              accent={accent}
+              text={report.term_card?.class_teacher_remark ?? null}
+            />
+            <RemarkBlock
+              label="Headteacher's Remark"
+              accent={accent}
+              text={report.term_card?.headteacher_remark ?? null}
+            />
           </div>
         </div>
 
-        {/* Skill ratings — placeholder rows for the class teacher to tick
-            on the printed copy. Storage + edit UI is a separate feature. */}
-        <SkillRatings accent={accent} />
+        {/* Skill ratings — fills the chosen rating circle when the card
+            has saved values; otherwise renders empty for hand-ticking. */}
+        <SkillRatings accent={accent} card={report.term_card ?? null} />
 
         {/* Signatures + QR ─────────────────────────────────────── */}
         <div className="mt-6 grid grid-cols-3 gap-6">
@@ -650,16 +659,30 @@ function Row({
   );
 }
 
-const SKILL_LABELS = [
-  "Punctuality",
-  "Neatness",
-  "Conduct",
-  "Cooperation",
-  "Class Participation",
+// Order matters: the array index + 1 == the stored rating value
+// (1 = Excellent, 5 = Poor). Keep in sync with the upsert payload.
+export const SKILL_ROWS = [
+  { key: "punctuality", label: "Punctuality" },
+  { key: "neatness", label: "Neatness" },
+  { key: "conduct", label: "Conduct" },
+  { key: "cooperation", label: "Cooperation" },
+  { key: "participation", label: "Class Participation" },
 ] as const;
-const RATING_LEVELS = ["Excellent", "V. Good", "Good", "Fair", "Poor"] as const;
+export const RATING_LEVELS = [
+  "Excellent",
+  "V. Good",
+  "Good",
+  "Fair",
+  "Poor",
+] as const;
 
-function SkillRatings({ accent }: { accent: string }) {
+function SkillRatings({
+  accent,
+  card,
+}: {
+  accent: string;
+  card: TermReportCard | null;
+}) {
   return (
     <div
       className="mt-5 rounded-xl border p-3"
@@ -683,29 +706,51 @@ function SkillRatings({ accent }: { accent: string }) {
           </tr>
         </thead>
         <tbody>
-          {SKILL_LABELS.map((label) => (
-            <tr key={label} className="border-t border-gray-100 dark:border-gray-800 print:border-gray-300">
-              <td className="px-2 py-1.5 font-medium text-gray-700 dark:text-gray-200 print:text-black">
-                {label}
-              </td>
-              {RATING_LEVELS.map((lvl) => (
-                <td key={lvl} className="px-2 py-1.5 text-center">
-                  <span
-                    className="mx-auto block h-3.5 w-3.5 rounded-full border"
-                    style={{ borderColor: `${accent}99` }}
-                    aria-label={`${label} ${lvl}`}
-                  />
+          {SKILL_ROWS.map(({ key, label }) => {
+            const value =
+              (card?.[key as keyof TermReportCard] as number | null | undefined) ??
+              null;
+            return (
+              <tr
+                key={key}
+                className="border-t border-gray-100 dark:border-gray-800 print:border-gray-300"
+              >
+                <td className="px-2 py-1.5 font-medium text-gray-700 dark:text-gray-200 print:text-black">
+                  {label}
                 </td>
-              ))}
-            </tr>
-          ))}
+                {RATING_LEVELS.map((lvl, idx) => {
+                  const isSelected = value === idx + 1;
+                  return (
+                    <td key={lvl} className="px-2 py-1.5 text-center">
+                      <span
+                        className="mx-auto block h-3.5 w-3.5 rounded-full border"
+                        style={{
+                          borderColor: `${accent}99`,
+                          backgroundColor: isSelected ? accent : "transparent",
+                        }}
+                        aria-label={`${label} ${lvl}${isSelected ? " (selected)" : ""}`}
+                      />
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
   );
 }
 
-function RemarkBlock({ label, accent }: { label: string; accent: string }) {
+function RemarkBlock({
+  label,
+  accent,
+  text,
+}: {
+  label: string;
+  accent: string;
+  text: string | null;
+}) {
   return (
     <div
       className="rounded-lg border border-dashed p-3"
@@ -717,7 +762,9 @@ function RemarkBlock({ label, accent }: { label: string; accent: string }) {
       >
         {label}
       </p>
-      <div className="mt-1 min-h-[2.5rem] text-sm" />
+      <p className="mt-1 min-h-[2.5rem] whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200 print:text-black">
+        {text || ""}
+      </p>
     </div>
   );
 }

@@ -19,7 +19,7 @@ from app.utils import (
 from app.models.assessment import (
     GradingScale, Grade,
     AssessmentCategory, Assessment,
-    AssessmentScore, TermResult, ScoreEditLog,
+    AssessmentScore, TermResult, TermReportCard, ScoreEditLog,
 )
 from app.models.academic import AcademicYear, Class, Subject, Term
 from app.models.student import Student
@@ -35,6 +35,7 @@ from app.schemas.grade import (
     ScoreEditLogResponse,
     ComputeTermResultsRequest, LockTermResultsRequest, TermResultResponse, StudentTermReport,
     StudentTermBreakdown, SubjectBreakdown, CategoryBreakdown, AssessmentBreakdown,
+    TermReportCardResponse, TermReportCardUpsert,
     GradingScaleCreate, GradingScaleUpdate,
     GradeCreate, GradeUpdate, GradingScaleResponse,
 )
@@ -1376,6 +1377,7 @@ async def student_term_report(
         if class_id is not None
         else {}
     )
+    term_card = await _fetch_term_card(school.id, student_id, term_id, db)
 
     return StudentTermReport(
         student_id=student_id,
@@ -1393,6 +1395,7 @@ async def student_term_report(
         attendance_pct=attendance_pct,
         verification_token=make_verification_token(student_id, term_id),
         subject_averages=subject_averages,
+        term_card=term_card,
     )
 
 
@@ -1511,6 +1514,9 @@ async def class_term_reports(
     subject_averages = await _fetch_subject_averages(
         school.id, class_id, term_id, db,
     )
+    cards_by_student = await _fetch_term_cards_for_students(
+        school.id, student_ids, term_id, db,
+    )
 
     reports: list[StudentTermReport] = []
     for enrollment in enrollments:
@@ -1534,6 +1540,7 @@ async def class_term_reports(
             attendance_pct=_attendance_pct(student.id),
             verification_token=make_verification_token(student.id, term_id),
             subject_averages=subject_averages,
+            term_card=cards_by_student.get(student.id),
         ))
 
     # Alphabetical for predictable print order.
@@ -1723,6 +1730,112 @@ async def student_term_breakdown(
     return StudentTermBreakdown(
         student_id=student_id, term_id=term_id, subjects=subjects,
     )
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# TERM REPORT CARDS — soft fields (skills + remarks)
+# ══════════════════════════════════════════════════════════════════════════
+
+# Anyone who can edit a teacher's grade book entry can also fill in skills
+# and the class-teacher remark. Only headteacher/admin can write the
+# headteacher remark — enforced inside the upsert.
+_EDIT_ROLES = ("teacher", "headteacher", "school_admin", "superadmin")
+_HEADTEACHER_ROLES = ("headteacher", "school_admin", "superadmin")
+
+
+@router.get("/term-cards/student/{student_id}",
+            response_model=TermReportCardResponse)
+async def get_term_card(
+    student_id: UUID,
+    user: CurrentUser, school: CurrentSchool, db: DB,
+    term_id: UUID = Query(...),
+):
+    """Read the saved skills + remarks for one student in one term."""
+    await _assert_student_in_school(student_id, school.id, db)
+    await _assert_term_in_school(term_id, school.id, db)
+
+    res = await db.execute(
+        select(TermReportCard).where(
+            TermReportCard.school_id  == school.id,
+            TermReportCard.student_id == student_id,
+            TermReportCard.term_id    == term_id,
+        )
+    )
+    card = res.scalar_one_or_none()
+    if card is None:
+        # Return an "empty" shape so the UI never has to special-case 404.
+        return TermReportCardResponse(student_id=student_id, term_id=term_id)
+    return card
+
+
+@router.put("/term-cards/student/{student_id}",
+            response_model=TermReportCardResponse)
+async def upsert_term_card(
+    student_id: UUID, body: TermReportCardUpsert,
+    user: CurrentUser, school: CurrentSchool, db: DB,
+):
+    """
+    Upsert the skills + remarks for one student in one term. PUT semantics:
+    fields not in the body are cleared (set to NULL) so the client always
+    sends the whole record.
+    """
+    if user.role not in _EDIT_ROLES:
+        raise HTTPException(403, "You don't have permission to edit report cards")
+
+    await _assert_student_in_school(student_id, school.id, db)
+    await _assert_term_in_school(body.term_id, school.id, db)
+
+    res = await db.execute(
+        select(TermReportCard).where(
+            TermReportCard.school_id  == school.id,
+            TermReportCard.student_id == student_id,
+            TermReportCard.term_id    == body.term_id,
+        )
+    )
+    card = res.scalar_one_or_none()
+
+    if card is None:
+        # Headteacher remark can only be written by an admin/headteacher.
+        if (body.headteacher_remark
+                and user.role not in _HEADTEACHER_ROLES):
+            raise HTTPException(
+                403,
+                "Only headteacher or admin can write the headteacher's remark",
+            )
+        card = TermReportCard(
+            school_id=school.id,
+            student_id=student_id,
+            term_id=body.term_id,
+            punctuality=body.punctuality,
+            neatness=body.neatness,
+            conduct=body.conduct,
+            cooperation=body.cooperation,
+            participation=body.participation,
+            class_teacher_remark=body.class_teacher_remark,
+            headteacher_remark=body.headteacher_remark,
+            updated_by=user.id,
+        )
+        db.add(card)
+    else:
+        # If a non-headteacher is editing, preserve the existing
+        # headteacher_remark rather than letting them clear it.
+        new_headteacher_remark = (
+            body.headteacher_remark
+            if user.role in _HEADTEACHER_ROLES
+            else card.headteacher_remark
+        )
+        card.punctuality          = body.punctuality
+        card.neatness             = body.neatness
+        card.conduct              = body.conduct
+        card.cooperation          = body.cooperation
+        card.participation        = body.participation
+        card.class_teacher_remark = body.class_teacher_remark
+        card.headteacher_remark   = new_headteacher_remark
+        card.updated_by           = user.id
+
+    await db.commit()
+    await db.refresh(card)
+    return card
 
 
 @router.post("/term-results/lock")
@@ -1928,6 +2041,51 @@ def _apply_grading_scale(
             return g.label, g.remark
 
     return None, None
+
+
+async def _fetch_term_card(
+    school_id: UUID,
+    student_id: UUID,
+    term_id: UUID,
+    db: AsyncSession,
+) -> Optional[TermReportCardResponse]:
+    """Hydrate the soft fields (skills + remarks) for the report card.
+
+    Returns None if no row exists — the UI then renders the empty
+    placeholder state. Returning None (instead of an empty record) keeps
+    the JSON tiny when most students have nothing filled yet.
+    """
+    res = await db.execute(
+        select(TermReportCard).where(
+            TermReportCard.school_id  == school_id,
+            TermReportCard.student_id == student_id,
+            TermReportCard.term_id    == term_id,
+        )
+    )
+    card = res.scalar_one_or_none()
+    return TermReportCardResponse.model_validate(card) if card else None
+
+
+async def _fetch_term_cards_for_students(
+    school_id: UUID,
+    student_ids: list,
+    term_id: UUID,
+    db: AsyncSession,
+) -> dict:
+    """Same idea as _fetch_term_card, but batched for the bulk endpoint."""
+    if not student_ids:
+        return {}
+    res = await db.execute(
+        select(TermReportCard).where(
+            TermReportCard.school_id == school_id,
+            TermReportCard.term_id   == term_id,
+            TermReportCard.student_id.in_(student_ids),
+        )
+    )
+    return {
+        c.student_id: TermReportCardResponse.model_validate(c)
+        for c in res.scalars().all()
+    }
 
 
 async def _fetch_subject_averages(

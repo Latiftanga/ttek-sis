@@ -250,6 +250,53 @@ class TermResult(Base):
     updated_at    = Column(DateTime(timezone=True), server_default=func.now(),
                           onupdate=func.now())
 
+class TermReportCard(Base):
+    """
+    The "soft" portions of a report card — skill ratings and the two
+    free-text remarks that the class teacher and headteacher write at
+    end of term. One row per student per term.
+
+    Skill ratings are stored as small ints 1-5 where 1=Excellent and
+    5=Poor (so larger = worse, matching the column order on the printed
+    card). NULL = not yet rated.
+    """
+    __tablename__ = "term_report_cards"
+    __table_args__ = (
+        UniqueConstraint("student_id", "term_id", name="uq_term_report_card"),
+    )
+
+    id                  = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    school_id           = Column(UUID(as_uuid=True),
+                                ForeignKey("schools.id", ondelete="CASCADE"),
+                                nullable=False)
+    student_id          = Column(UUID(as_uuid=True),
+                                ForeignKey("students.id", ondelete="CASCADE"),
+                                nullable=False)
+    term_id             = Column(UUID(as_uuid=True),
+                                ForeignKey("terms.id", ondelete="CASCADE"),
+                                nullable=False)
+
+    # Skill ratings: 1 (Excellent) … 5 (Poor). NULL = not rated yet.
+    punctuality         = Column(Integer)
+    neatness            = Column(Integer)
+    conduct             = Column(Integer)
+    cooperation         = Column(Integer)
+    participation       = Column(Integer)
+
+    # Free-text remarks — printed on the card, also returned to parents
+    # via the public verify endpoint.
+    class_teacher_remark = Column(Text)
+    headteacher_remark   = Column(Text)
+
+    # Audit
+    updated_by          = Column(UUID(as_uuid=True),
+                                ForeignKey("users.id"),
+                                nullable=True)
+    created_at          = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at          = Column(DateTime(timezone=True), server_default=func.now(),
+                                onupdate=func.now())
+
+
 class ScoreEditLog(Base):
     """
     Immutable audit log — one row per score change.

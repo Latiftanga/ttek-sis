@@ -285,6 +285,50 @@ class StudentTermReport(BaseModel):
     subject_averages:  Dict[UUID, Decimal] = {}
     # Class average raw_score per subject in this class+term — drives the
     # "compare to class" tick marks on the report-card performance bars.
+    term_card:         Optional["TermReportCardResponse"] = None
+    # Saved skills + remarks for this student+term, if filled.
+
+
+# ══════════════════════════════════════════════════════
+# TERM REPORT CARD — soft fields (skills + remarks)
+# ══════════════════════════════════════════════════════
+
+# Skill ratings are 1-5 where 1=Excellent and 5=Poor. NULL means not rated.
+
+class TermReportCardUpsert(BaseModel):
+    """Upsert payload for a student's term-card skills + remarks."""
+    term_id:              UUID
+    punctuality:          Optional[int] = None
+    neatness:             Optional[int] = None
+    conduct:              Optional[int] = None
+    cooperation:          Optional[int] = None
+    participation:        Optional[int] = None
+    class_teacher_remark: Optional[str] = None
+    headteacher_remark:   Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_ratings(self):
+        for field in ("punctuality", "neatness", "conduct",
+                      "cooperation", "participation"):
+            v = getattr(self, field)
+            if v is not None and not (1 <= v <= 5):
+                raise ValueError(f"{field} must be between 1 and 5")
+        return self
+
+
+class TermReportCardResponse(BaseModel):
+    student_id:           UUID
+    term_id:              UUID
+    punctuality:          Optional[int] = None
+    neatness:             Optional[int] = None
+    conduct:              Optional[int] = None
+    cooperation:          Optional[int] = None
+    participation:        Optional[int] = None
+    class_teacher_remark: Optional[str] = None
+    headteacher_remark:   Optional[str] = None
+    updated_at:           Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
 
 
 # ══════════════════════════════════════════════════════

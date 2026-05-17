@@ -2,17 +2,31 @@
 import { useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Printer } from "lucide-react";
+import { ArrowLeft, Pencil, Printer } from "lucide-react";
 import {
   useStudentReport,
   useStudentBreakdown,
 } from "@/lib/hooks/useAssessments";
 import { useAcademicYears, useTerms } from "@/lib/hooks/useAcademic";
 import { useSchoolProfile } from "@/lib/hooks/useSchool";
+import { useAuthStore } from "@/lib/store";
 import type { SubjectBreakdown } from "@/lib/api";
 import Button from "@/components/ui/Button";
 import Select from "@/components/ui/Select";
 import ReportCardBody from "@/components/students/ReportCardBody";
+import EditTermCardDrawer from "@/components/students/EditTermCardDrawer";
+
+const EDIT_ROLES = new Set([
+  "teacher",
+  "headteacher",
+  "school_admin",
+  "superadmin",
+]);
+const HEADTEACHER_ROLES = new Set([
+  "headteacher",
+  "school_admin",
+  "superadmin",
+]);
 
 export default function ReportCardPage() {
   const params = useParams<{ id: string }>();
@@ -20,11 +34,18 @@ export default function ReportCardPage() {
   const search = useSearchParams();
   const studentId = params.id;
 
+  const { user } = useAuthStore();
+  const canEdit = !!user?.role && EDIT_ROLES.has(user.role);
+  const canEditHeadteacher =
+    !!user?.role && HEADTEACHER_ROLES.has(user.role);
+
   const { data: school } = useSchoolProfile();
   const { data: years = [] } = useAcademicYears();
   const currentYear = years.find((y) => y.is_current);
   const { data: terms = [] } = useTerms(currentYear?.id ?? null);
   const currentTerm = terms.find((t) => t.is_current);
+
+  const [editOpen, setEditOpen] = useState(false);
 
   // ?term_id=... wins so a deep link to a past term works.
   const urlTermId = search.get("term_id");
@@ -99,6 +120,16 @@ export default function ReportCardPage() {
               </option>
             ))}
           </Select>
+          {canEdit && (
+            <Button
+              variant="secondary"
+              onClick={() => setEditOpen(true)}
+              disabled={!effectiveTermId}
+            >
+              <Pencil className="h-4 w-4" />
+              Edit remarks & skills
+            </Button>
+          )}
           <Button onClick={() => window.print()} variant="secondary">
             <Printer className="h-4 w-4" />
             Print
@@ -122,6 +153,18 @@ export default function ReportCardPage() {
         <p className="mt-2 text-xs text-gray-400 print:hidden">
           Loading breakdown…
         </p>
+      )}
+
+      {canEdit && effectiveTermId && (
+        <EditTermCardDrawer
+          open={editOpen}
+          onClose={() => setEditOpen(false)}
+          studentId={studentId}
+          termId={effectiveTermId}
+          termName={report.term_name}
+          existing={report.term_card}
+          canEditHeadteacher={canEditHeadteacher}
+        />
       )}
     </div>
   );

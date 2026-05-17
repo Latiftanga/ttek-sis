@@ -15,6 +15,8 @@ import {
   type ScoreEditLog,
   type StudentTermReport,
   type StudentTermBreakdown,
+  type TermReportCard,
+  type TermReportCardUpsert,
 } from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
 
@@ -365,6 +367,23 @@ export function useClassReports(
     queryFn: () =>
       assessmentsApi.classReports(classId!, termId ? { term_id: termId } : undefined),
     enabled: !!slug && !!classId,
+  });
+}
+
+export function useUpsertTermCard(studentId: string) {
+  const slug = useSlug();
+  const qc = useQueryClient();
+  return useMutation<TermReportCard, Error, TermReportCardUpsert>({
+    mutationFn: (body) => assessmentsApi.upsertTermCard(studentId, body),
+    onSuccess: (_data, vars) => {
+      // The term_card is inlined into both the single-student report and
+      // any class-roster query, so invalidate both keys for the matching
+      // term so the card re-renders with the saved values.
+      qc.invalidateQueries({
+        queryKey: [slug, "student-report", studentId, vars.term_id],
+      });
+      qc.invalidateQueries({ queryKey: [slug, "class-reports"] });
+    },
   });
 }
 

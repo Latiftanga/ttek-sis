@@ -696,6 +696,31 @@ export interface TermResult {
   computed_at: string | null;
 }
 
+export interface TermReportCard {
+  student_id: string;
+  term_id: string;
+  // 1 = Excellent … 5 = Poor. null = not rated.
+  punctuality: number | null;
+  neatness: number | null;
+  conduct: number | null;
+  cooperation: number | null;
+  participation: number | null;
+  class_teacher_remark: string | null;
+  headteacher_remark: string | null;
+  updated_at?: string | null;
+}
+
+export interface TermReportCardUpsert {
+  term_id: string;
+  punctuality?: number | null;
+  neatness?: number | null;
+  conduct?: number | null;
+  cooperation?: number | null;
+  participation?: number | null;
+  class_teacher_remark?: string | null;
+  headteacher_remark?: string | null;
+}
+
 export interface StudentTermReport {
   student_id: string;
   student_number: string;
@@ -712,6 +737,7 @@ export interface StudentTermReport {
   attendance_pct: number | null;
   verification_token: string | null;
   subject_averages: Record<string, number>;
+  term_card: TermReportCard | null;
 }
 
 export interface AssessmentBreakdown {
@@ -863,6 +889,14 @@ export const assessmentsApi = {
   ): Promise<StudentTermBreakdown> =>
     api
       .get(`/assessments/term-results/student/${studentId}/breakdown`, { params })
+      .then((r) => r.data),
+
+  upsertTermCard: (
+    studentId: string,
+    body: TermReportCardUpsert,
+  ): Promise<TermReportCard> =>
+    api
+      .put(`/assessments/term-cards/student/${studentId}`, body)
       .then((r) => r.data),
 };
 

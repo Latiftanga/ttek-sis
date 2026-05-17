@@ -25,7 +25,7 @@ from app.config import settings
 from app.database import get_db
 from app.models.academic import AcademicYear, Class, Subject, Term
 from app.models.assessment import (
-    Assessment, AssessmentCategory, AssessmentScore, TermResult,
+    Assessment, AssessmentCategory, AssessmentScore, TermResult, TermReportCard,
 )
 from app.models.attendance import AttendanceRecord, AttendanceSession
 from app.models.enrollment import Enrollment
@@ -34,7 +34,7 @@ from app.models.student import Student
 from app.schemas.grade import (
     StudentTermReport, TermResultResponse,
     StudentTermBreakdown, SubjectBreakdown, CategoryBreakdown,
-    AssessmentBreakdown,
+    AssessmentBreakdown, TermReportCardResponse,
 )
 
 
@@ -228,6 +228,20 @@ async def verify_report(
             if avg is not None
         }
 
+    # Term card (skills + remarks). Inlined here too — public endpoint
+    # mustn't depend on the auth-aware grades.py module.
+    card_res = await db.execute(
+        select(TermReportCard).where(
+            TermReportCard.school_id  == school.id,
+            TermReportCard.student_id == student_id,
+            TermReportCard.term_id    == term_id,
+        )
+    )
+    card_row = card_res.scalar_one_or_none()
+    term_card = (
+        TermReportCardResponse.model_validate(card_row) if card_row else None
+    )
+
     report = StudentTermReport(
         student_id=student_id,
         student_number=student.student_number,
@@ -243,6 +257,7 @@ async def verify_report(
         overall_position=overall_position,
         attendance_pct=attendance_pct,
         subject_averages=subject_averages,
+        term_card=term_card,
     )
 
     # ── Per-subject breakdown ──────────────────────────────────────────────

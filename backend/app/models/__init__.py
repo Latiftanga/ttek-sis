@@ -9,6 +9,7 @@ from app.models.assessment import (
     Assessment,
     AssessmentScore,
     TermResult,
+    TermReportCard,
     ScoreEditLog,
 )
 from app.models.academic import AcademicYear, Term, Class, Subject
