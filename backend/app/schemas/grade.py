@@ -111,6 +111,9 @@ class ScoreInput(BaseModel):
     score:      Optional[Decimal] = None
     is_absent:  bool              = False
     remarks:    Optional[str]     = None
+    reason:     Optional[str]     = None
+    # Required when bulk-editing an existing score on a published assessment.
+    # Distinct from `remarks` (which is a teacher note about the score itself).
 
     @model_validator(mode="after")
     def validate_score_or_absent(self):
@@ -248,7 +251,8 @@ class TermResultResponse(BaseModel):
     class_id:    UUID
     raw_score:   Optional[Decimal] = None
     ca_score:    Optional[Decimal] = None
-    grade_label: Optional[str]     = None
+    exam_score:  Optional[Decimal] = None
+    grade:       Optional[str]     = None
     remark:      Optional[str]     = None
     position:    Optional[int]     = None
     is_computed: bool
@@ -285,10 +289,16 @@ class GradingScaleCreate(BaseModel):
     description: Optional[str] = None
 
 
-class GradingBandCreate(BaseModel):
+class GradingScaleUpdate(BaseModel):
+    name:        Optional[str] = None
+    description: Optional[str] = None
+    is_active:   Optional[bool] = None
+
+
+class GradeCreate(BaseModel):
     min_score:   Decimal
     max_score:   Decimal
-    grade_label: str
+    label:       str
     remark:      Optional[str] = None
     order:       int
 
@@ -301,22 +311,41 @@ class GradingBandCreate(BaseModel):
         return self
 
 
+class GradeUpdate(BaseModel):
+    min_score:   Optional[Decimal] = None
+    max_score:   Optional[Decimal] = None
+    label:       Optional[str]     = None
+    remark:      Optional[str]     = None
+    order:       Optional[int]     = None
+
+    @model_validator(mode="after")
+    def validate_range(self):
+        if self.min_score is not None and self.max_score is not None:
+            if self.min_score >= self.max_score:
+                raise ValueError("min_score must be less than max_score")
+        if self.min_score is not None and self.min_score < 0:
+            raise ValueError("min_score cannot be negative")
+        if self.max_score is not None and self.max_score > 100:
+            raise ValueError("max_score cannot exceed 100")
+        return self
+
+
 class GradingScaleResponse(BaseModel):
     id:          UUID
     school_id:   Optional[UUID] = None
     name:        str
     description: Optional[str] = None
     is_active:   bool
-    bands:       List["GradingBandResponse"] = []
+    grades:      List["GradeResponse"] = []
 
     model_config = {"from_attributes": True}
 
 
-class GradingBandResponse(BaseModel):
+class GradeResponse(BaseModel):
     id:          UUID
     min_score:   Decimal
     max_score:   Decimal
-    grade_label: str
+    label:       str
     remark:      Optional[str] = None
     order:       int
 

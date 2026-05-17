@@ -23,10 +23,14 @@ import {
   useUpdateCategory,
   useDeleteCategory,
   useCreateScale,
-  useAddBand,
+  useUpdateScale,
+  useDeleteScale,
+  useAddGrade,
+  useUpdateGrade,
+  useDeleteGrade,
 } from "@/lib/hooks/useAssessments";
 import { getApiError, cn } from "@/lib/utils";
-import type { AssessmentCategory, GradingScale } from "@/lib/api";
+import type { AssessmentCategory, Grade, GradingScale } from "@/lib/api";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import Drawer from "@/components/ui/Drawer";
@@ -485,11 +489,11 @@ const scaleSchema = z.object({
 });
 type ScaleValues = z.infer<typeof scaleSchema>;
 
-const bandSchema = z
+const gradeSchema = z
   .object({
     min_score: z.coerce.number().min(0).max(100),
     max_score: z.coerce.number().min(0).max(100),
-    grade_label: z.string().trim().min(1, "Label required"),
+    label: z.string().trim().min(1, "Label required"),
     remark: z.string().optional(),
     order: z.coerce.number().int().min(0),
   })
@@ -497,12 +501,20 @@ const bandSchema = z
     message: "Min must be less than max",
     path: ["min_score"],
   });
-type BandValues = z.infer<typeof bandSchema>;
+type GradeValues = z.infer<typeof gradeSchema>;
 
 function ScalesTab() {
   const { data: scales = [], isLoading } = useGradingScales();
   const [addingScale, setAddingScale] = useState(false);
-  const [addingBandTo, setAddingBandTo] = useState<GradingScale | null>(null);
+  const [editingScale, setEditingScale] = useState<GradingScale | null>(null);
+  const [deletingScale, setDeletingScale] = useState<GradingScale | null>(null);
+  const [addingGradeTo, setAddingGradeTo] = useState<GradingScale | null>(null);
+  const [editingGrade, setEditingGrade] = useState<
+    { scale: GradingScale; grade: Grade } | null
+  >(null);
+  const [deletingGrade, setDeletingGrade] = useState<
+    { scale: GradingScale; grade: Grade } | null
+  >(null);
 
   const systemScales = scales.filter((s) => s.school_id === null);
   const customScales = scales.filter((s) => s.school_id !== null);
@@ -538,7 +550,11 @@ function ScalesTab() {
                   key={s.id}
                   scale={s}
                   systemOwned
-                  onAddBand={() => setAddingBandTo(s)}
+                  onAddGrade={() => setAddingGradeTo(s)}
+                  onEditScale={() => setEditingScale(s)}
+                  onDeleteScale={() => setDeletingScale(s)}
+                  onEditGrade={(g) => setEditingGrade({ scale: s, grade: g })}
+                  onDeleteGrade={(g) => setDeletingGrade({ scale: s, grade: g })}
                 />
               ))}
             </div>
@@ -553,7 +569,11 @@ function ScalesTab() {
                   key={s.id}
                   scale={s}
                   systemOwned={false}
-                  onAddBand={() => setAddingBandTo(s)}
+                  onAddGrade={() => setAddingGradeTo(s)}
+                  onEditScale={() => setEditingScale(s)}
+                  onDeleteScale={() => setDeletingScale(s)}
+                  onEditGrade={(g) => setEditingGrade({ scale: s, grade: g })}
+                  onDeleteGrade={(g) => setDeletingGrade({ scale: s, grade: g })}
                 />
               ))}
             </div>
@@ -562,11 +582,40 @@ function ScalesTab() {
         </div>
       )}
 
-      {addingScale && <ScaleFormModal onClose={() => setAddingScale(false)} />}
-      {addingBandTo && (
-        <BandFormModal
-          scale={addingBandTo}
-          onClose={() => setAddingBandTo(null)}
+      {addingScale && (
+        <ScaleFormModal scale={null} onClose={() => setAddingScale(false)} />
+      )}
+      {editingScale && (
+        <ScaleFormModal
+          scale={editingScale}
+          onClose={() => setEditingScale(null)}
+        />
+      )}
+      {deletingScale && (
+        <DeleteScaleConfirm
+          scale={deletingScale}
+          onClose={() => setDeletingScale(null)}
+        />
+      )}
+      {addingGradeTo && (
+        <GradeFormModal
+          scale={addingGradeTo}
+          grade={null}
+          onClose={() => setAddingGradeTo(null)}
+        />
+      )}
+      {editingGrade && (
+        <GradeFormModal
+          scale={editingGrade.scale}
+          grade={editingGrade.grade}
+          onClose={() => setEditingGrade(null)}
+        />
+      )}
+      {deletingGrade && (
+        <DeleteGradeConfirm
+          scale={deletingGrade.scale}
+          grade={deletingGrade.grade}
+          onClose={() => setDeletingGrade(null)}
         />
       )}
     </section>
@@ -576,13 +625,21 @@ function ScalesTab() {
 function ScaleCard({
   scale,
   systemOwned,
-  onAddBand,
+  onAddGrade,
+  onEditScale,
+  onDeleteScale,
+  onEditGrade,
+  onDeleteGrade,
 }: {
   scale: GradingScale;
   systemOwned: boolean;
-  onAddBand: () => void;
+  onAddGrade: () => void;
+  onEditScale: () => void;
+  onDeleteScale: () => void;
+  onEditGrade: (grade: Grade) => void;
+  onDeleteGrade: (grade: Grade) => void;
 }) {
-  const bands = [...(scale.bands ?? [])].sort((a, b) => a.order - b.order);
+  const grades = [...(scale.grades ?? [])].sort((a, b) => a.order - b.order);
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
       <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
@@ -604,15 +661,33 @@ function ScaleCard({
           )}
         </div>
         {!systemOwned && (
-          <Button size="sm" variant="ghost" onClick={onAddBand}>
-            <Plus className="h-3.5 w-3.5" />
-            Add band
-          </Button>
+          <div className="inline-flex items-center gap-1">
+            <Button size="sm" variant="ghost" onClick={onAddGrade}>
+              <Plus className="h-3.5 w-3.5" />
+              Add grade
+            </Button>
+            <button
+              type="button"
+              onClick={onEditScale}
+              aria-label={`Edit ${scale.name}`}
+              className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={onDeleteScale}
+              aria-label={`Delete ${scale.name}`}
+              className="rounded-md p-1.5 text-gray-300 hover:bg-red-50 hover:text-red-500 dark:text-gray-600 dark:hover:bg-red-950/40 dark:hover:text-red-400"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
         )}
       </div>
-      {bands.length === 0 ? (
+      {grades.length === 0 ? (
         <p className="text-xs italic text-gray-400 dark:text-gray-500">
-          No bands yet. Add bands so this scale can be applied.
+          No grades yet. Add grades so this scale can be applied.
         </p>
       ) : (
         <table className="min-w-full text-xs">
@@ -621,18 +696,41 @@ function ScaleCard({
               <th className="py-1 text-left font-medium">Range</th>
               <th className="py-1 text-left font-medium">Grade</th>
               <th className="py-1 text-left font-medium">Remark</th>
+              {!systemOwned && <th className="py-1 text-right font-medium"></th>}
             </tr>
           </thead>
           <tbody className="text-gray-700 dark:text-gray-200">
-            {bands.map((b) => (
-              <tr key={b.id} className="border-t border-gray-100 dark:border-gray-800">
+            {grades.map((g) => (
+              <tr key={g.id} className="border-t border-gray-100 dark:border-gray-800">
                 <td className="py-1.5 font-mono">
-                  {Number(b.min_score)} – {Number(b.max_score)}
+                  {Number(g.min_score)} – {Number(g.max_score)}
                 </td>
-                <td className="py-1.5 font-semibold">{b.grade_label}</td>
+                <td className="py-1.5 font-semibold">{g.label}</td>
                 <td className="py-1.5 text-gray-500 dark:text-gray-400">
-                  {b.remark ?? "—"}
+                  {g.remark ?? "—"}
                 </td>
+                {!systemOwned && (
+                  <td className="py-1.5 text-right">
+                    <div className="inline-flex gap-1">
+                      <button
+                        type="button"
+                        onClick={() => onEditGrade(g)}
+                        aria-label={`Edit grade ${g.label}`}
+                        className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onDeleteGrade(g)}
+                        aria-label={`Delete grade ${g.label}`}
+                        className="rounded-md p-1 text-gray-300 hover:bg-red-50 hover:text-red-500 dark:text-gray-600 dark:hover:bg-red-950/40 dark:hover:text-red-400"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -642,32 +740,59 @@ function ScaleCard({
   );
 }
 
-function ScaleFormModal({ onClose }: { onClose: () => void }) {
+function ScaleFormModal({
+  scale,
+  onClose,
+}: {
+  scale: GradingScale | null;
+  onClose: () => void;
+}) {
+  const isEdit = scale !== null;
   const create = useCreateScale();
+  const update = useUpdateScale();
   const {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<ScaleValues>({
     resolver: zodResolver(scaleSchema),
-    defaultValues: { name: "", description: "" },
+    defaultValues: {
+      name: scale?.name ?? "",
+      description: scale?.description ?? "",
+    },
   });
 
   async function onSubmit(values: ScaleValues) {
+    const body = {
+      name: values.name,
+      description: values.description?.trim() || null,
+    };
     try {
-      await create.mutateAsync({
-        name: values.name,
-        description: values.description?.trim() || undefined,
-      });
-      toast.success(`"${values.name}" added — now add some bands.`);
+      if (isEdit && scale) {
+        await update.mutateAsync({ id: scale.id, body });
+        toast.success(`"${values.name}" updated`);
+      } else {
+        await create.mutateAsync({
+          name: values.name,
+          description: body.description ?? undefined,
+        });
+        toast.success(`"${values.name}" added — now add some grades.`);
+      }
       onClose();
     } catch (err) {
-      toast.error(getApiError(err, "Could not create the scale."));
+      toast.error(
+        getApiError(err, isEdit ? "Could not update the scale." : "Could not create the scale."),
+      );
     }
   }
 
   return (
-    <Drawer open onClose={onClose} title="Add grading scale" width="md">
+    <Drawer
+      open
+      onClose={onClose}
+      title={isEdit ? `Edit scale — ${scale!.name}` : "Add grading scale"}
+      width="md"
+    >
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
         <Input
           id="s_name"
@@ -689,7 +814,7 @@ function ScaleFormModal({ onClose }: { onClose: () => void }) {
             Cancel
           </Button>
           <Button type="submit" loading={isSubmitting}>
-            Add scale
+            {isEdit ? "Save changes" : "Add scale"}
           </Button>
         </div>
       </form>
@@ -697,55 +822,132 @@ function ScaleFormModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-function BandFormModal({
+function DeleteScaleConfirm({
   scale,
   onClose,
 }: {
   scale: GradingScale;
   onClose: () => void;
 }) {
-  const addBand = useAddBand();
-  const nextOrder = (scale.bands?.length ?? 0) + 1;
+  const del = useDeleteScale();
+  async function handle() {
+    try {
+      await del.mutateAsync(scale.id);
+      toast.success(`"${scale.name}" deleted`);
+      onClose();
+    } catch (err) {
+      toast.error(getApiError(err, "Could not delete the scale."));
+    }
+  }
+  return (
+    <ConfirmSheet
+      open
+      onClose={onClose}
+      title="Delete this grading scale?"
+      description={
+        <>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Remove <strong className="text-gray-900 dark:text-gray-100">{scale.name}</strong>?
+          </p>
+          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+            All grades in this scale will be removed too. Any computed term
+            results that referenced it will keep their stored grade letters,
+            but future computations for classes using this scale will fall
+            back to the system default of the same name.
+          </p>
+        </>
+      }
+      confirmLabel="Delete"
+      variant="danger"
+      loading={del.isPending}
+      onConfirm={handle}
+    />
+  );
+}
+
+function GradeFormModal({
+  scale,
+  grade,
+  onClose,
+}: {
+  scale: GradingScale;
+  grade: Grade | null;
+  onClose: () => void;
+}) {
+  const isEdit = grade !== null;
+  const addGrade = useAddGrade();
+  const updateGrade = useUpdateGrade();
+  const nextOrder = (scale.grades?.length ?? 0) + 1;
   const {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
-  } = useForm<BandValues>({
-    resolver: zodResolver(bandSchema),
-    defaultValues: {
-      min_score: 0,
-      max_score: 100,
-      grade_label: "",
-      remark: "",
-      order: nextOrder,
-    },
+  } = useForm<GradeValues>({
+    resolver: zodResolver(gradeSchema),
+    defaultValues: grade
+      ? {
+          min_score: Number(grade.min_score),
+          max_score: Number(grade.max_score),
+          label: grade.label,
+          remark: grade.remark ?? "",
+          order: grade.order,
+        }
+      : {
+          min_score: 0,
+          max_score: 100,
+          label: "",
+          remark: "",
+          order: nextOrder,
+        },
   });
 
-  async function onSubmit(values: BandValues) {
+  async function onSubmit(values: GradeValues) {
     try {
-      await addBand.mutateAsync({
-        scaleId: scale.id,
-        body: {
-          min_score: values.min_score,
-          max_score: values.max_score,
-          grade_label: values.grade_label,
-          remark: values.remark?.trim() || undefined,
-          order: values.order,
-        },
-      });
-      toast.success(`Band ${values.grade_label} added`);
+      if (isEdit && grade) {
+        await updateGrade.mutateAsync({
+          scaleId: scale.id,
+          gradeId: grade.id,
+          body: {
+            min_score: values.min_score,
+            max_score: values.max_score,
+            label: values.label,
+            remark: values.remark?.trim() || null,
+            order: values.order,
+          },
+        });
+        toast.success(`Grade ${values.label} updated`);
+      } else {
+        await addGrade.mutateAsync({
+          scaleId: scale.id,
+          body: {
+            min_score: values.min_score,
+            max_score: values.max_score,
+            label: values.label,
+            remark: values.remark?.trim() || undefined,
+            order: values.order,
+          },
+        });
+        toast.success(`Grade ${values.label} added`);
+      }
       onClose();
     } catch (err) {
-      toast.error(getApiError(err, "Could not add the band."));
+      toast.error(
+        getApiError(err, isEdit ? "Could not update the grade." : "Could not add the grade."),
+      );
     }
   }
 
   return (
-    <Drawer open onClose={onClose} title={`Add band — ${scale.name}`} width="md">
+    <Drawer
+      open
+      onClose={onClose}
+      title={isEdit ? `Edit grade — ${grade!.label}` : `Add grade — ${scale.name}`}
+      width="md"
+    >
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
         <div className="grid grid-cols-2 gap-3">
           <Input
-            id="b_min"
+            id="g_min"
             label="Min % *"
             type="number"
             min={0}
@@ -755,7 +957,7 @@ function BandFormModal({
             {...register("min_score")}
           />
           <Input
-            id="b_max"
+            id="g_max"
             label="Max % *"
             type="number"
             min={0}
@@ -766,21 +968,21 @@ function BandFormModal({
           />
         </div>
         <Input
-          id="b_label"
+          id="g_label"
           label="Grade *"
           placeholder="e.g. A1, B+, Excellent"
-          error={errors.grade_label?.message}
-          {...register("grade_label")}
+          error={errors.label?.message}
+          {...register("label")}
         />
         <Input
-          id="b_remark"
+          id="g_remark"
           label="Remark"
           placeholder="e.g. Excellent, Credit, Pass"
           error={errors.remark?.message}
           {...register("remark")}
         />
         <Input
-          id="b_order"
+          id="g_order"
           label="Display order"
           type="number"
           min={1}
@@ -793,11 +995,56 @@ function BandFormModal({
             Cancel
           </Button>
           <Button type="submit" loading={isSubmitting}>
-            Add band
+            {isEdit ? "Save changes" : "Add grade"}
           </Button>
         </div>
       </form>
     </Drawer>
+  );
+}
+
+function DeleteGradeConfirm({
+  scale,
+  grade,
+  onClose,
+}: {
+  scale: GradingScale;
+  grade: Grade;
+  onClose: () => void;
+}) {
+  const del = useDeleteGrade();
+  async function handle() {
+    try {
+      await del.mutateAsync({ scaleId: scale.id, gradeId: grade.id });
+      toast.success(`Grade ${grade.label} deleted`);
+      onClose();
+    } catch (err) {
+      toast.error(getApiError(err, "Could not delete the grade."));
+    }
+  }
+  return (
+    <ConfirmSheet
+      open
+      onClose={onClose}
+      title="Delete this grade?"
+      description={
+        <>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Remove <strong className="text-gray-900 dark:text-gray-100">{grade.label}</strong>{" "}
+            ({Number(grade.min_score)}–{Number(grade.max_score)}) from{" "}
+            <strong>{scale.name}</strong>?
+          </p>
+          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+            Scores that fall in this range will no longer be assigned a grade
+            until you add a replacement band.
+          </p>
+        </>
+      }
+      confirmLabel="Delete"
+      variant="danger"
+      loading={del.isPending}
+      onConfirm={handle}
+    />
   );
 }
 

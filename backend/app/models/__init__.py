@@ -4,7 +4,7 @@ from app.models.ges_rank import GESRank
 from app.models.user import User
 from app.models.assessment import (
     GradingScale,
-    GradingBand,
+    Grade,
     AssessmentCategory,
     Assessment,
     AssessmentScore,

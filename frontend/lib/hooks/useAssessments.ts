@@ -161,7 +161,35 @@ export function useCreateScale() {
   });
 }
 
-export function useAddBand() {
+export function useUpdateScale() {
+  const slug = useSlug();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      body,
+    }: {
+      id: string;
+      body: { name?: string; description?: string | null; is_active?: boolean };
+    }) => assessmentsApi.updateScale(id, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [slug, "grading-scales"] });
+    },
+  });
+}
+
+export function useDeleteScale() {
+  const slug = useSlug();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => assessmentsApi.deleteScale(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [slug, "grading-scales"] });
+    },
+  });
+}
+
+export function useAddGrade() {
   const slug = useSlug();
   const qc = useQueryClient();
   return useMutation({
@@ -173,11 +201,48 @@ export function useAddBand() {
       body: {
         min_score: number;
         max_score: number;
-        grade_label: string;
+        label: string;
         remark?: string;
         order: number;
       };
-    }) => assessmentsApi.addBand(scaleId, body),
+    }) => assessmentsApi.addGrade(scaleId, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [slug, "grading-scales"] });
+    },
+  });
+}
+
+export function useUpdateGrade() {
+  const slug = useSlug();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      scaleId,
+      gradeId,
+      body,
+    }: {
+      scaleId: string;
+      gradeId: string;
+      body: Partial<{
+        min_score: number;
+        max_score: number;
+        label: string;
+        remark: string | null;
+        order: number;
+      }>;
+    }) => assessmentsApi.updateGrade(scaleId, gradeId, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [slug, "grading-scales"] });
+    },
+  });
+}
+
+export function useDeleteGrade() {
+  const slug = useSlug();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ scaleId, gradeId }: { scaleId: string; gradeId: string }) =>
+      assessmentsApi.deleteGrade(scaleId, gradeId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: [slug, "grading-scales"] });
     },

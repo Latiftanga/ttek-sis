@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, delete as sql_delete
 from sqlalchemy.orm import selectinload
@@ -17,7 +17,7 @@ from app.utils import (
     assert_student_in_school as _assert_student_in_school,
 )
 from app.models.assessment import (
-    GradingScale, GradingBand,
+    GradingScale, Grade,
     AssessmentCategory, Assessment,
     AssessmentScore, TermResult, ScoreEditLog,
 )
@@ -25,6 +25,7 @@ from app.models.academic import AcademicYear, Class, Subject, Term
 from app.models.student import Student
 from app.models.enrollment import Enrollment
 from app.models.student_subject import StudentSubject
+from app.models.attendance import AttendanceRecord, AttendanceSession
 from app.schemas.grade import (
     AssessmentCategoryCreate, AssessmentCategoryUpdate, AssessmentCategoryResponse,
     AssessmentCreate, AssessmentUpdate, AssessmentResponse,
@@ -32,7 +33,8 @@ from app.schemas.grade import (
     AssessmentScoreResponse, GradebookEntry, GradebookResponse,
     ScoreEditLogResponse,
     ComputeTermResultsRequest, LockTermResultsRequest, TermResultResponse, StudentTermReport,
-    GradingScaleCreate, GradingBandCreate, GradingScaleResponse,
+    GradingScaleCreate, GradingScaleUpdate,
+    GradeCreate, GradeUpdate, GradingScaleResponse,
 )
 
 router = APIRouter()
@@ -50,7 +52,7 @@ async def list_grading_scales(
     """Returns system defaults + school's own custom scales."""
     result = await db.execute(
         select(GradingScale)
-        .options(selectinload(GradingScale.bands))
+        .options(selectinload(GradingScale.grades))
         .where(
             (GradingScale.school_id == school.id) |
             (GradingScale.school_id.is_(None))
@@ -76,38 +78,120 @@ async def create_grading_scale(
     return scale
 
 
-@router.post("/grading-scales/{scale_id}/bands", status_code=201)
-async def add_grading_band(
-    scale_id: UUID, body: GradingBandCreate,
+@router.post("/grading-scales/{scale_id}/grades", status_code=201)
+async def add_grade(
+    scale_id: UUID, body: GradeCreate,
     user: CurrentUser, school: CurrentSchool, db: DB,
 ):
-    """Add a band to a school's custom grading scale."""
+    """Add a grade to a school's custom grading scale."""
     scale = await _get_scale(scale_id, school.id, db)
 
-    # Validate no overlap with existing bands
+    # Validate no overlap with existing grades
     existing = await db.execute(
-        select(GradingBand).where(GradingBand.scale_id == scale_id)
+        select(Grade).where(Grade.scale_id == scale_id)
     )
-    for band in existing.scalars().all():
-        if not (body.max_score <= band.min_score or body.min_score >= band.max_score):
+    for grade in existing.scalars().all():
+        if not (body.max_score <= grade.min_score or body.min_score >= grade.max_score):
             raise HTTPException(
                 400,
                 f"Score range {body.min_score}-{body.max_score} overlaps "
-                f"with existing band {band.min_score}-{band.max_score} ({band.grade_label})"
+                f"with existing grade {grade.min_score}-{grade.max_score} ({grade.label})"
             )
 
-    band = GradingBand(
+    grade = Grade(
         scale_id=scale_id,
         min_score=body.min_score,
         max_score=body.max_score,
-        grade_label=body.grade_label,
+        label=body.label,
         remark=body.remark,
         order=body.order,
     )
-    db.add(band)
+    db.add(grade)
     await db.commit()
-    await db.refresh(band)
-    return band
+    await db.refresh(grade)
+    return grade
+
+
+@router.patch("/grading-scales/{scale_id}", response_model=GradingScaleResponse)
+async def update_grading_scale(
+    scale_id: UUID, body: GradingScaleUpdate,
+    user: CurrentUser, school: CurrentSchool, db: DB,
+):
+    """Edit a school's own scale. System defaults are read-only."""
+    scale = await _get_scale(scale_id, school.id, db)
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(scale, field, value)
+    await db.commit()
+    await db.refresh(scale)
+    # Reload grades for the response
+    await db.refresh(scale, attribute_names=["grades"])
+    return scale
+
+
+@router.delete("/grading-scales/{scale_id}", status_code=204)
+async def delete_grading_scale(
+    scale_id: UUID, user: CurrentUser, school: CurrentSchool, db: DB,
+):
+    """Delete a school's own scale. Grades cascade-delete."""
+    scale = await _get_scale(scale_id, school.id, db)
+    await db.delete(scale)
+    await db.commit()
+
+
+@router.patch("/grading-scales/{scale_id}/grades/{grade_id}")
+async def update_grade(
+    scale_id: UUID, grade_id: UUID, body: GradeUpdate,
+    user: CurrentUser, school: CurrentSchool, db: DB,
+):
+    """Edit a grade within a school's own scale."""
+    scale = await _get_scale(scale_id, school.id, db)
+    grade_res = await db.execute(
+        select(Grade).where(Grade.id == grade_id, Grade.scale_id == scale.id)
+    )
+    grade = grade_res.scalar_one_or_none()
+    if not grade:
+        raise HTTPException(404, "Grade not found in this scale")
+
+    # If the range is being changed, re-check overlap against sibling grades
+    new_min = body.min_score if body.min_score is not None else grade.min_score
+    new_max = body.max_score if body.max_score is not None else grade.max_score
+    if new_min != grade.min_score or new_max != grade.max_score:
+        siblings = await db.execute(
+            select(Grade).where(
+                Grade.scale_id == scale.id,
+                Grade.id != grade.id,
+            )
+        )
+        for other in siblings.scalars().all():
+            if not (new_max <= other.min_score or new_min >= other.max_score):
+                raise HTTPException(
+                    400,
+                    f"Score range {new_min}-{new_max} overlaps with "
+                    f"existing grade {other.min_score}-{other.max_score} ({other.label})",
+                )
+
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(grade, field, value)
+    await db.commit()
+    await db.refresh(grade)
+    return grade
+
+
+@router.delete("/grading-scales/{scale_id}/grades/{grade_id}", status_code=204)
+async def delete_grade(
+    scale_id: UUID, grade_id: UUID,
+    user: CurrentUser, school: CurrentSchool, db: DB,
+):
+    """Delete one grade from a school's own scale."""
+    scale = await _get_scale(scale_id, school.id, db)
+    grade_res = await db.execute(
+        select(Grade).where(Grade.id == grade_id, Grade.scale_id == scale.id)
+    )
+    grade = grade_res.scalar_one_or_none()
+    if not grade:
+        raise HTTPException(404, "Grade not found in this scale")
+    await db.delete(grade)
+    await db.commit()
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -180,8 +264,11 @@ async def update_category(
 async def delete_category(
     category_id: UUID, user: CurrentUser, school: CurrentSchool, db: DB,
 ):
+    """
+    Hard-delete a category when nothing references it. Schools that want to
+    retire a category they've used should PATCH `is_active=False` instead.
+    """
     category = await _get_category(category_id, school.id, db)
-    # Check no assessments use this category
     used = await db.execute(
         select(func.count(Assessment.id)).where(
             Assessment.category_id == category_id
@@ -191,9 +278,9 @@ async def delete_category(
         raise HTTPException(
             400,
             "Cannot delete — assessments exist using this category. "
-            "Deactivate it instead."
+            "Deactivate it instead.",
         )
-    category.is_active = False
+    await db.delete(category)
     await db.commit()
 
 
@@ -558,7 +645,7 @@ async def get_gradebook(
 
 @router.post("/{assessment_id}/scores", status_code=201)
 async def submit_scores(
-    assessment_id: UUID, body: BulkScoreSubmit,
+    assessment_id: UUID, body: BulkScoreSubmit, response: Response,
     user: CurrentUser, school: CurrentSchool, db: DB,
 ):
     """
@@ -572,6 +659,26 @@ async def submit_scores(
     await _assert_students_in_school(
         [r.student_id for r in body.records], school.id, db
     )
+
+    # Once term results are locked, only headteacher/admin may push score changes
+    # through any path — including bulk submit. Otherwise a teacher could bypass
+    # the single-edit lock check by using the bulk endpoint.
+    term_res = await db.execute(
+        select(TermResult).where(
+            TermResult.school_id  == school.id,
+            TermResult.subject_id == assessment.subject_id,
+            TermResult.class_id   == assessment.class_id,
+            TermResult.term_id    == assessment.term_id,
+            TermResult.is_submitted.is_(True),
+        ).limit(1)
+    )
+    term_locked = term_res.scalar_one_or_none() is not None
+
+    if term_locked and user.role not in ("headteacher", "school_admin", "superadmin"):
+        raise HTTPException(
+            403,
+            "Term results are locked. Contact the headteacher for corrections.",
+        )
 
     now = datetime.now(UTC)
     saved = 0
@@ -611,7 +718,7 @@ async def submit_scores(
                     existing.original_score = existing.score
 
                 # Require reason if already published
-                if assessment.is_published and not record.remarks:
+                if assessment.is_published and not record.reason:
                     errors.append({
                         "student_id": str(record.student_id),
                         "error": "Reason required when editing a published assessment score"
@@ -625,6 +732,7 @@ async def submit_scores(
                 existing.edit_count  = (existing.edit_count or 0) + 1
                 existing.last_edited_by = user.id
                 existing.last_edited_at = now
+                existing.edit_reason = record.reason
 
                 # Append to audit log
                 db.add(ScoreEditLog(
@@ -636,9 +744,9 @@ async def submit_scores(
                     new_score=record.score,
                     old_is_absent=old_is_absent,
                     new_is_absent=record.is_absent,
-                    reason=record.remarks if assessment.is_published else None,
+                    reason=record.reason,
                     is_after_submission=assessment.is_published,
-                    is_after_lock=False,
+                    is_after_lock=term_locked,
                     changed_at_hour=now.hour,
                 ))
                 updated += 1
@@ -657,6 +765,16 @@ async def submit_scores(
             saved += 1
 
     await db.commit()
+
+    # If some records succeeded and others failed, signal that with 207
+    # Multi-Status so clients can branch on status rather than parsing the
+    # body. Full success keeps the standard 201.
+    if errors and (saved or updated):
+        response.status_code = 207
+    elif errors and not (saved or updated):
+        # Everything failed validation → 400 is more appropriate than 201
+        response.status_code = 400
+
     return {
         "saved":   saved,
         "updated": updated,
@@ -808,17 +926,17 @@ async def suspicious_edits(
     if user.role not in ("headteacher", "school_admin", "superadmin"):
         raise HTTPException(403, "Only headteacher or admin can view audit report")
 
-    # Scores edited after publication
+    # Pull all edit logs for this school (optionally narrowed to one term),
+    # then compute flags in Python. Filtering by is_after_submission in SQL
+    # hides edits whose suspicious signal is "outside hours" or ">2 edits"
+    # but happened pre-publication.
     query = (
         select(ScoreEditLog, AssessmentScore, Assessment)
         .join(AssessmentScore,
               ScoreEditLog.assessment_score_id == AssessmentScore.id)
         .join(Assessment,
               AssessmentScore.assessment_id == Assessment.id)
-        .where(
-            ScoreEditLog.school_id == school.id,
-            ScoreEditLog.is_after_submission.is_(True),
-        )
+        .where(ScoreEditLog.school_id == school.id)
         .order_by(ScoreEditLog.changed_at.desc())
     )
 
@@ -833,6 +951,8 @@ async def suspicious_edits(
         flags = []
         if log.is_after_submission:
             flags.append("edited_after_publication")
+        if log.is_after_lock:
+            flags.append("edited_after_term_lock")
         if log.changed_at_hour is not None and (
             log.changed_at_hour < 6 or log.changed_at_hour >= 21
         ):
@@ -840,15 +960,18 @@ async def suspicious_edits(
         if (score.edit_count or 0) > 2:
             flags.append("edited_more_than_twice")
 
+        if not flags:
+            continue  # routine edit — skip
+
         suspicious.append({
             "assessment_id":  str(assessment.id),
             "student_id":     str(score.student_id),
-            "changed_by":       str(log.changed_by),
-            "changed_at":       log.changed_at.isoformat(),
-            "old_score":        float(log.old_score) if log.old_score else None,
-            "new_score":        float(log.new_score) if log.new_score else None,
-            "reason":           log.reason,
-            "flags":            flags,
+            "changed_by":     str(log.changed_by),
+            "changed_at":     log.changed_at.isoformat(),
+            "old_score":      float(log.old_score) if log.old_score is not None else None,
+            "new_score":      float(log.new_score) if log.new_score is not None else None,
+            "reason":         log.reason,
+            "flags":          flags,
         })
 
     return {
@@ -882,21 +1005,28 @@ async def compute_term_results(
 
     now = datetime.now(UTC)
 
-    # Get subjects to compute
+    # Get subjects to compute. Only published assessments count toward term
+    # results — drafts represent in-progress score entry and shouldn't
+    # silently affect totals.
     if body.subject_id:
         subject_ids = [body.subject_id]
     else:
         subjects_res = await db.execute(
             select(Assessment.subject_id).distinct().where(
-                Assessment.school_id == school.id,
-                Assessment.class_id  == body.class_id,
-                Assessment.term_id   == body.term_id,
+                Assessment.school_id   == school.id,
+                Assessment.class_id    == body.class_id,
+                Assessment.term_id     == body.term_id,
+                Assessment.is_published.is_(True),
             )
         )
         subject_ids = [row[0] for row in subjects_res.all()]
 
     if not subject_ids:
-        raise HTTPException(404, "No assessments found for this class and term")
+        raise HTTPException(
+            404,
+            "No published assessments found for this class and term. "
+            "Publish at least one assessment before computing results.",
+        )
 
     # All active enrollments for this class and year (no start_date filter —
     # retroactively enrolled students must be included in computed results).
@@ -921,6 +1051,18 @@ async def compute_term_results(
     )
     categories = {c.id: c for c in categories_res.scalars().all()}
 
+    # Weights must total 100 for raw_score to be out of 100. Anything else
+    # silently under-scores every student (e.g. weights summing to 80 cap a
+    # perfect student at 80 → graded B2 on WASSCE). Fail loudly so the school
+    # fixes the setup rather than discovering wrong grades on report cards.
+    total_weight = sum((c.weight for c in categories.values()), Decimal("0"))
+    if total_weight != 100:
+        raise HTTPException(
+            400,
+            f"Assessment category weights must total 100% (currently {total_weight}%). "
+            "Adjust weights in Settings → Assessment modes before computing results.",
+        )
+
     # Pre-fetch all subjects in one query
     all_subjects_res = await db.execute(
         select(Subject).where(Subject.id.in_(subject_ids))
@@ -934,15 +1076,18 @@ async def compute_term_results(
     class_ = class_res.scalar_one_or_none()
     scale_name = _get_scale_name(class_)
 
+    # School's own scale wins over the system default of the same name.
+    # nulls_last puts school_id = school.id first, then the system row as fallback.
     scale_res = await db.execute(
         select(GradingScale)
-        .options(selectinload(GradingScale.bands))
+        .options(selectinload(GradingScale.grades))
         .where(
             GradingScale.name == scale_name,
-            GradingScale.school_id.is_(None),
+            (GradingScale.school_id == school.id) | (GradingScale.school_id.is_(None)),
         )
+        .order_by(GradingScale.school_id.nulls_last())
     )
-    scale = scale_res.scalar_one_or_none()
+    scale = scale_res.scalars().first()
 
     computed_count = 0
 
@@ -968,13 +1113,14 @@ async def compute_term_results(
         if not student_ids:
             continue
 
-        # Get all assessments for this subject + class + term
+        # Get all published assessments for this subject + class + term
         assessments_res = await db.execute(
             select(Assessment).where(
-                Assessment.school_id  == school.id,
-                Assessment.class_id   == body.class_id,
-                Assessment.subject_id == subject_id,
-                Assessment.term_id    == body.term_id,
+                Assessment.school_id   == school.id,
+                Assessment.class_id    == body.class_id,
+                Assessment.subject_id  == subject_id,
+                Assessment.term_id     == body.term_id,
+                Assessment.is_published.is_(True),
             )
         )
         assessments = assessments_res.scalars().all()
@@ -1004,15 +1150,21 @@ async def compute_term_results(
         )
         existing_map = {r.student_id: r for r in existing_res.scalars().all()}
 
-        # Compute weighted score per student (no DB calls)
-        student_scores = {
-            sid: _compute_ca_score(sid, assessments, categories, scores_map)
+        # Compute CA and Exam contributions per student (no DB calls).
+        student_totals = {
+            sid: _compute_term_totals(sid, assessments, categories, scores_map)
             for sid in student_ids
         }
 
-        # Rank by score descending
+        def _raw(totals: tuple[Optional[Decimal], Optional[Decimal]]) -> Optional[Decimal]:
+            ca, ex = totals
+            if ca is None and ex is None:
+                return None
+            return (ca or Decimal("0")) + (ex or Decimal("0"))
+
+        # Rank by raw_score descending
         ranked = sorted(
-            [(sid, sc) for sid, sc in student_scores.items() if sc is not None],
+            [(sid, _raw(t)) for sid, t in student_totals.items() if _raw(t) is not None],
             key=lambda x: x[1],
             reverse=True,
         )
@@ -1020,12 +1172,9 @@ async def compute_term_results(
 
         # Persist TermResult per student
         for student_id in student_ids:
-            raw_score = student_scores.get(student_id)
-            grade_label, remark = _apply_grading_scale(raw_score, scale)
-
-            ca_score = None
-            if raw_score is not None:
-                ca_score = round(raw_score / 2, 2) if scale_name in ("BECE", "WASSCE") else raw_score
+            ca_score, exam_score = student_totals[student_id]
+            raw_score = _raw((ca_score, exam_score))
+            grade, remark = _apply_grading_scale(raw_score, scale)
 
             existing = existing_map.get(student_id)
             if existing:
@@ -1033,7 +1182,8 @@ async def compute_term_results(
                     continue  # locked — skip
                 existing.raw_score   = raw_score
                 existing.ca_score    = ca_score
-                existing.grade_label = grade_label
+                existing.exam_score  = exam_score
+                existing.grade       = grade
                 existing.remark      = remark
                 existing.position    = positions.get(student_id)
                 existing.is_computed = True
@@ -1048,7 +1198,8 @@ async def compute_term_results(
                     class_id=body.class_id,
                     raw_score=raw_score,
                     ca_score=ca_score,
-                    grade_label=grade_label,
+                    exam_score=exam_score,
+                    grade=grade,
                     remark=remark,
                     position=positions.get(student_id),
                     is_computed=True,
@@ -1096,7 +1247,6 @@ async def student_term_report(
     term_id: Optional[UUID] = Query(None),
 ):
     """Full term report for one student — feeds the report card."""
-    # Get student
     student_res = await db.execute(
         select(Student).where(
             Student.id == student_id,
@@ -1107,7 +1257,7 @@ async def student_term_report(
     if not student:
         raise HTTPException(404, "Student not found")
 
-    # Get current term if not specified
+    # Resolve term — given term_id wins, else fall back to the current term.
     if not term_id:
         term_res = await db.execute(
             select(Term).where(
@@ -1130,28 +1280,27 @@ async def student_term_report(
         if not term:
             raise HTTPException(404, "Term not found")
 
-    # Get current enrollment
+    # Academic year comes from the term, not the school's current year. A
+    # report card for last year's Term 1 should display *that* year's class,
+    # not whichever class the student is enrolled in today.
     year_res = await db.execute(
-        select(AcademicYear).where(
-            AcademicYear.school_id == school.id,
-            AcademicYear.is_current.is_(True),
-        )
+        select(AcademicYear).where(AcademicYear.id == term.academic_year_id)
     )
     year = year_res.scalar_one_or_none()
 
-    enrollment_query = select(Enrollment).where(
-        Enrollment.student_id == student_id,
-        Enrollment.school_id  == school.id,
-        Enrollment.status     == "active",
-    )
-    if year:
-        enrollment_query = enrollment_query.where(
-            Enrollment.academic_year_id == year.id
+    enrollment_res = await db.execute(
+        select(Enrollment).where(
+            Enrollment.student_id == student_id,
+            Enrollment.school_id  == school.id,
+            Enrollment.academic_year_id == term.academic_year_id,
+            Enrollment.status     == "active",
         )
-    enrollment_res = await db.execute(enrollment_query)
+    )
     enrollment = enrollment_res.scalar_one_or_none()
     class_name = "Unknown"
+    class_id = None
     if enrollment:
+        class_id = enrollment.class_id
         class_res = await db.execute(
             select(Class).where(Class.id == enrollment.class_id)
         )
@@ -1159,7 +1308,7 @@ async def student_term_report(
         if cls:
             class_name = cls.name
 
-    # Get term results
+    # This student's per-subject TermResults
     results_res = await db.execute(
         select(TermResult).where(
             TermResult.school_id  == school.id,
@@ -1169,10 +1318,56 @@ async def student_term_report(
     )
     results = results_res.scalars().all()
 
-    # Compute overall position (sum of subject positions)
     total_score = sum(
-        r.raw_score for r in results if r.raw_score is not None
-    ) if results else None
+        (r.raw_score for r in results if r.raw_score is not None),
+        Decimal("0"),
+    )
+    if not any(r.raw_score is not None for r in results):
+        total_score = None
+
+    # Overall position — rank every student in the same class+term by their
+    # sum of raw_scores across subjects, then find this student's spot.
+    overall_position = None
+    if class_id is not None:
+        peer_res = await db.execute(
+            select(TermResult.student_id, func.sum(TermResult.raw_score))
+            .where(
+                TermResult.school_id == school.id,
+                TermResult.class_id  == class_id,
+                TermResult.term_id   == term_id,
+                TermResult.is_computed.is_(True),
+            )
+            .group_by(TermResult.student_id)
+        )
+        peer_totals = [
+            (sid, total) for sid, total in peer_res.all() if total is not None
+        ]
+        ranked = sorted(peer_totals, key=lambda x: x[1], reverse=True)
+        for pos, (sid, _) in enumerate(ranked, 1):
+            if sid == student_id:
+                overall_position = pos
+                break
+
+    # Attendance percentage — same definition as /attendance/student/{id}/summary:
+    # (present + late) / submitted-session records this term. None when no
+    # attendance was taken (signals "no data", not 0%).
+    att_res = await db.execute(
+        select(AttendanceRecord.status)
+        .join(AttendanceSession,
+              AttendanceRecord.session_id == AttendanceSession.id)
+        .where(
+            AttendanceRecord.student_id == student_id,
+            AttendanceRecord.school_id  == school.id,
+            AttendanceSession.term_id   == term_id,
+            AttendanceSession.status    == "submitted",
+        )
+    )
+    statuses = [row[0] for row in att_res.all()]
+    total_sessions = len(statuses)
+    attendance_pct: Optional[Decimal] = None
+    if total_sessions > 0:
+        attended = sum(1 for s in statuses if s in ("present", "late"))
+        attendance_pct = Decimal(str(round(attended / total_sessions * 100, 2)))
 
     return StudentTermReport(
         student_id=student_id,
@@ -1184,9 +1379,9 @@ async def student_term_report(
         term_name=term.name if term else "",
         academic_year=year.name if year else "",
         results=[TermResultResponse.model_validate(r) for r in results],
-        total_score=Decimal(str(total_score)) if total_score else None,
-        overall_position=None,  # computed separately when all subjects locked
-        attendance_pct=None,    # fetched from attendance summary
+        total_score=total_score,
+        overall_position=overall_position,
+        attendance_pct=attendance_pct,
     )
 
 
@@ -1310,27 +1505,37 @@ def _get_scale_name(class_: Class) -> str:
     return "Primary GES"
 
 
-def _compute_ca_score(
+def _compute_term_totals(
     student_id: UUID,
     assessments: list,
     categories: dict,
     scores_map: dict,
-) -> Optional[Decimal]:
+) -> tuple[Optional[Decimal], Optional[Decimal]]:
     """
-    Compute weighted CA score for one student.
+    Compute (ca_total, exam_total) for one student in one subject.
 
-    scores_map: pre-fetched {(student_id, assessment_id): AssessmentScore}
+    Buckets contributions by `AssessmentCategory.is_ca` so the report card can
+    show CA and Exam separately (the standard Ghanaian convention).
 
-    BECE/WASSCE logic:
-      Average all instances within each category, then apply that category's weight.
-      Total = sum of weighted category averages (out of 100).
+    For each category:
+      - average all assessment instances in that category as percentages
+      - multiply by category.weight (already a fraction of the whole 100)
+      - add to the matching bucket
+
+    The buckets are independent — if CA categories sum to 50 weight, a perfect
+    CA student scores 50 in ca_total. Same for exam_total. raw_score is left
+    to the caller (typically ca_total + exam_total).
+
+    Returns None for a bucket that has no scored assessments at all.
     """
     by_category: dict = {}
     for assessment in assessments:
         by_category.setdefault(assessment.category_id, []).append(assessment)
 
-    total_weighted = Decimal("0")
-    total_weight   = Decimal("0")
+    ca_total       = Decimal("0")
+    exam_total     = Decimal("0")
+    ca_has_scores  = False
+    exam_has_scores = False
 
     for cat_id, cat_assessments in by_category.items():
         category = categories.get(cat_id)
@@ -1348,28 +1553,38 @@ def _compute_ca_score(
             continue
 
         avg = sum(scores) / len(scores)
-        weighted = (avg / 100) * category.weight
-        total_weighted += weighted  # already Decimal — no str round-trip needed
-        total_weight   += category.weight
+        contribution = (avg / 100) * category.weight
 
-    if total_weight == 0:
-        return None
+        if category.is_ca:
+            ca_total += contribution
+            ca_has_scores = True
+        else:
+            exam_total += contribution
+            exam_has_scores = True
 
-    return round(total_weighted, 2)
+    return (
+        round(ca_total, 2) if ca_has_scores else None,
+        round(exam_total, 2) if exam_has_scores else None,
+    )
 
 
 def _apply_grading_scale(
     score: Optional[Decimal],
     scale: Optional[GradingScale],
 ) -> tuple:
-    """Returns (grade_label, remark) for a given score."""
+    """Returns (label, remark) for a given score.
+
+    Walks grades by descending min_score so the first grade whose floor the
+    score clears wins. This protects against gappy seeds like 70-74, 75-100:
+    a score of 74.5 (>= 70) still resolves to the 70-74 band.
+    """
     if score is None:
         return None, None
-    if not scale or not scale.bands:
+    if not scale or not scale.grades:
         return None, None
 
-    for band in scale.bands:
-        if band.min_score <= score <= band.max_score:
-            return band.grade_label, band.remark
+    for g in sorted(scale.grades, key=lambda x: x.min_score, reverse=True):
+        if score >= g.min_score:
+            return g.label, g.remark
 
     return None, None

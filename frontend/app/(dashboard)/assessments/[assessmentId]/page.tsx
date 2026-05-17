@@ -65,9 +65,12 @@ export default function ScoreEntryPage() {
   const unpublish = useUnpublishAssessment(assessmentId);
   const deleteAssessment = useDeleteAssessment();
 
-  // Local edits keyed by student_id (draft-only quick entry)
+  // Local edits keyed by student_id (draft-only quick entry).
+  // `touched` tracks which rows the user has interacted with — refetches
+  // refresh untouched rows from the server but leave in-flight typing alone,
+  // so a concurrent save by another teacher doesn't clobber your work.
   const [marks, setMarks] = useState<Record<string, Mark>>({});
-  const initRef = useRef(false);
+  const touchedRef = useRef<Set<string>>(new Set());
 
   // Per-row edit modal (used for published edits + history view)
   const [editTarget, setEditTarget] = useState<GradebookEntry | null>(null);
@@ -86,19 +89,21 @@ export default function ScoreEntryPage() {
     }
   }
 
-  // Initialize local state from server data
+  // Hydrate untouched rows from server. Re-runs on every gradebook update
+  // (initial load, refetch, post-save) but skips rows the user is editing.
   useEffect(() => {
-    if (initRef.current) return;
     if (!gradebook) return;
-    initRef.current = true;
-    const init: Record<string, Mark> = {};
-    for (const e of gradebook.entries) {
-      init[e.student_id] = {
-        score: e.score != null ? String(e.score) : "",
-        is_absent: e.is_absent,
-      };
-    }
-    setMarks(init);
+    setMarks((prev) => {
+      const next = { ...prev };
+      for (const e of gradebook.entries) {
+        if (touchedRef.current.has(e.student_id)) continue;
+        next[e.student_id] = {
+          score: e.score != null ? String(e.score) : "",
+          is_absent: e.is_absent,
+        };
+      }
+      return next;
+    });
   }, [gradebook]);
 
   // Sort entries by display name
@@ -127,6 +132,7 @@ export default function ScoreEntryPage() {
   ).length;
 
   function setScore(studentId: string, value: string) {
+    touchedRef.current.add(studentId);
     setMarks((prev) => ({
       ...prev,
       [studentId]: {
@@ -137,6 +143,7 @@ export default function ScoreEntryPage() {
   }
 
   function toggleAbsent(studentId: string) {
+    touchedRef.current.add(studentId);
     setMarks((prev) => {
       const cur = prev[studentId] ?? { score: "", is_absent: false };
       const nextAbsent = !cur.is_absent;
@@ -206,10 +213,29 @@ export default function ScoreEntryPage() {
     }
 
     try {
-      await bulkScore.mutateAsync({ records: valid });
-      toast.success(`${valid.length} score${valid.length === 1 ? "" : "s"} saved`);
-      // Reset init flag so refetched data re-initializes local state
-      initRef.current = false;
+      const result = await bulkScore.mutateAsync({ records: valid });
+      // Backend can return partial success (HTTP 207): some rows saved, others
+      // rejected. Surface the rejected count so the teacher knows to retry,
+      // and name the first failing student so they can find the row.
+      const savedTotal = (result?.saved ?? 0) + (result?.updated ?? 0);
+      const errs = result?.errors ?? [];
+      if (errs.length > 0) {
+        const studentLookup = new Map(entries.map((e) => [e.student_id, e]));
+        const first = studentLookup.get(errs[0].student_id);
+        const firstName = first ? `${first.first_name} ${first.last_name}` : "one student";
+        if (savedTotal > 0) {
+          toast.error(
+            `Saved ${savedTotal}, but ${errs.length} failed (e.g. ${firstName}: ${errs[0].error}).`,
+          );
+        } else {
+          toast.error(`Nothing saved — ${firstName}: ${errs[0].error}`);
+        }
+      } else {
+        toast.success(`${savedTotal} score${savedTotal === 1 ? "" : "s"} saved`);
+      }
+      // The just-saved rows are now in the server's truth — let the next
+      // refetch hydrate them.
+      touchedRef.current.clear();
     } catch (err) {
       toast.error(getApiError(err, "Could not save scores. Please try again."));
     }
@@ -689,15 +715,45 @@ function EditAssessmentDrawer({
 
 // ── Edit modal ────────────────────────────────────────────────────────────
 
-const editFormSchema = z
-  .object({
-    is_absent: z.boolean(),
-    score: z.string().optional(),
-    remarks: z.string().optional(),
-    reason: z.string().optional(),
-  });
+function buildEditSchema(isPublished: boolean, maxScore: number) {
+  return z
+    .object({
+      is_absent: z.boolean(),
+      score: z.string().optional(),
+      remarks: z.string().optional(),
+      reason: z.string().optional(),
+    })
+    .superRefine((v, ctx) => {
+      if (isPublished && !v.reason?.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Tell us why you're correcting this score.",
+          path: ["reason"],
+        });
+      }
+      if (!v.is_absent) {
+        const raw = v.score?.trim() ?? "";
+        if (raw === "") {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Enter a score, or mark the student absent.",
+            path: ["score"],
+          });
+        } else {
+          const num = Number(raw);
+          if (Number.isNaN(num) || num < 0 || num > maxScore) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: `Score must be between 0 and ${maxScore}.`,
+              path: ["score"],
+            });
+          }
+        }
+      }
+    });
+}
 
-type EditFormValues = z.infer<typeof editFormSchema>;
+type EditFormValues = z.infer<ReturnType<typeof buildEditSchema>>;
 
 function EditScoreModal({
   assessmentId,
@@ -719,13 +775,18 @@ function EditScoreModal({
     .filter(Boolean)
     .join(" ");
 
+  const schema = useMemo(
+    () => buildEditSchema(isPublished, maxScore),
+    [isPublished, maxScore],
+  );
+
   const {
     register,
     handleSubmit,
     watch,
     formState: { errors, isSubmitting },
   } = useForm<EditFormValues>({
-    resolver: zodResolver(editFormSchema),
+    resolver: zodResolver(schema),
     defaultValues: {
       is_absent: entry.is_absent,
       score: entry.score != null ? String(entry.score) : "",
@@ -737,24 +798,6 @@ function EditScoreModal({
   const isAbsent = watch("is_absent");
 
   async function onSubmit(values: EditFormValues) {
-    // Manual checks Zod can't easily express because they depend on isPublished + isAbsent.
-    if (isPublished && !values.reason?.trim()) {
-      toast.error("Tell us why you're correcting this score.");
-      return;
-    }
-    if (!values.is_absent) {
-      const raw = values.score?.trim() ?? "";
-      if (raw === "") {
-        toast.error("Enter a score, or mark the student absent.");
-        return;
-      }
-      const num = Number(raw);
-      if (Number.isNaN(num) || num < 0 || num > maxScore) {
-        toast.error(`Score must be between 0 and ${maxScore}.`);
-        return;
-      }
-    }
-
     try {
       await editScore.mutateAsync({
         studentId: entry.student_id,

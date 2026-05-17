@@ -26,15 +26,15 @@ class GradingScale(Base):
 
     school      = relationship("School", back_populates="grading_scales",
                                foreign_keys=[school_id])   # ← add this
-    bands       = relationship("GradingBand",
+    grades      = relationship("Grade",
                                back_populates="scale",
                                cascade="all, delete-orphan",
-                               order_by="GradingBand.order")
+                               order_by="Grade.order")
 
 
-class GradingBand(Base):
-    """One grade label and its score range within a scale."""
-    __tablename__ = "grading_bands"
+class Grade(Base):
+    """One letter grade and its score range within a scale (e.g. A1, B2)."""
+    __tablename__ = "grades"
 
     id          = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     scale_id    = Column(UUID(as_uuid=True),
@@ -42,11 +42,11 @@ class GradingBand(Base):
                         nullable=False)
     min_score   = Column(Numeric(5, 2), nullable=False)
     max_score   = Column(Numeric(5, 2), nullable=False)
-    grade_label = Column(String(20), nullable=False)
+    label       = Column(String(20), nullable=False)
     remark      = Column(String(50))
     order       = Column(Integer, nullable=False)
 
-    scale       = relationship("GradingScale", back_populates="bands")
+    scale       = relationship("GradingScale", back_populates="grades")
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -221,12 +221,17 @@ class TermResult(Base):
                           nullable=False)
 
     raw_score     = Column(Numeric(5, 2))
-    # Weighted average across all AssessmentScores this term
+    # ca_score + exam_score. Out of 100 when all categories scored.
 
     ca_score      = Column(Numeric(5, 2))
-    # Scaled to 50 for JHS/SHS — same as raw_score for primary
+    # Weighted sum of CA category contributions for this term.
+    # Out of (sum of CA category weights) — typically 50 for JHS/SHS, 100 for CA-only primary.
 
-    grade_label   = Column(String(10))
+    exam_score    = Column(Numeric(5, 2))
+    # Weighted sum of non-CA (exam) category contributions for this term.
+    # Out of (sum of non-CA weights) — typically 50 for JHS/SHS, None for CA-only schools.
+
+    grade         = Column(String(10))
     # "A1" ... "F9" for JHS/SHS | "1"..."5" for Primary
 
     remark        = Column(String(50))

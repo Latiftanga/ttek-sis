@@ -589,11 +589,11 @@ export interface AssessmentUpdateBody {
   max_score?: number;
 }
 
-export interface GradingBand {
+export interface Grade {
   id: string;
   min_score: number;
   max_score: number;
-  grade_label: string;
+  label: string;
   remark: string | null;
   order: number;
 }
@@ -604,7 +604,7 @@ export interface GradingScale {
   name: string;
   description: string | null;
   is_active: boolean;
-  bands: GradingBand[];
+  grades: Grade[];
 }
 
 export interface GradebookEntry {
@@ -633,11 +633,19 @@ export interface ScoreInput {
   score?: number | null;
   is_absent?: boolean;
   remarks?: string | null;
+  reason?: string | null;
 }
 
 export interface BulkScoreBody {
   records: ScoreInput[];
   client_id?: string;
+}
+
+export interface BulkScoreResult {
+  saved: number;
+  updated: number;
+  errors: { student_id: string; error: string }[];
+  message: string;
 }
 
 export interface ScoreEditBody {
@@ -685,19 +693,44 @@ export const assessmentsApi = {
 
   createScale: (body: { name: string; description?: string }): Promise<GradingScale> =>
     api.post("/assessments/grading-scales", body).then((r) => r.data),
-  addBand: (
+  updateScale: (
+    id: string,
+    body: { name?: string; description?: string | null; is_active?: boolean },
+  ): Promise<GradingScale> =>
+    api.patch(`/assessments/grading-scales/${id}`, body).then((r) => r.data),
+  deleteScale: (id: string): Promise<void> =>
+    api.delete(`/assessments/grading-scales/${id}`).then(() => undefined),
+  addGrade: (
     scaleId: string,
     body: {
       min_score: number;
       max_score: number;
-      grade_label: string;
+      label: string;
       remark?: string;
       order: number;
     },
-  ): Promise<GradingBand> =>
+  ): Promise<Grade> =>
     api
-      .post(`/assessments/grading-scales/${scaleId}/bands`, body)
+      .post(`/assessments/grading-scales/${scaleId}/grades`, body)
       .then((r) => r.data),
+  updateGrade: (
+    scaleId: string,
+    gradeId: string,
+    body: Partial<{
+      min_score: number;
+      max_score: number;
+      label: string;
+      remark: string | null;
+      order: number;
+    }>,
+  ): Promise<Grade> =>
+    api
+      .patch(`/assessments/grading-scales/${scaleId}/grades/${gradeId}`, body)
+      .then((r) => r.data),
+  deleteGrade: (scaleId: string, gradeId: string): Promise<void> =>
+    api
+      .delete(`/assessments/grading-scales/${scaleId}/grades/${gradeId}`)
+      .then(() => undefined),
 
   list: (params?: Record<string, string>): Promise<Assessment[]> =>
     api.get("/assessments/", { params }).then((r) => r.data),
@@ -714,7 +747,7 @@ export const assessmentsApi = {
 
   getGradebook: (id: string): Promise<GradebookResponse> =>
     api.get(`/assessments/${id}/gradebook`).then((r) => r.data),
-  bulkScore: (id: string, body: BulkScoreBody) =>
+  bulkScore: (id: string, body: BulkScoreBody): Promise<BulkScoreResult> =>
     api.post(`/assessments/${id}/scores`, body).then((r) => r.data),
   editScore: (id: string, studentId: string, body: ScoreEditBody) =>
     api.patch(`/assessments/${id}/scores/${studentId}`, body).then((r) => r.data),

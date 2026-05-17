@@ -5,7 +5,7 @@ from pwdlib.hashers.argon2 import Argon2Hasher
 
 from uuid import UUID
 
-from app.models.assessment import GradingScale, GradingBand
+from app.models.assessment import GradingScale, Grade
 from app.models.programme import SystemProgramme, SchoolProgramme
 from app.models.academic import Subject
 from app.models.ges_rank import GESRank
@@ -57,7 +57,7 @@ DEFAULTS = [
     {
         "name": "WASSCE",
         "description": "Standard grading scale for SHS (WASSCE)",
-        "bands": [
+        "grades": [
             # min, max,  label, remark,      order
             (75, 100, "A1", "Excellent",  1),
             (70,  74, "B2", "Very Good",  2),
@@ -73,7 +73,7 @@ DEFAULTS = [
     {
         "name": "BECE",
         "description": "Standard grading scale for Basic 7-9 (BECE)",
-        "bands": [
+        "grades": [
             # min, max, label, remark,    order
             (90, 100, "1", "Highest",      1),
             (80,  89, "2", "Higher",       2),
@@ -89,7 +89,7 @@ DEFAULTS = [
     {
         "name": "Primary GES",
         "description": "GES standard scale for Basic 1-6",
-        "bands": [
+        "grades": [
             (80, 100, "1", "Excellent",     1),
             (70,  79, "2", "Very Good",     2),
             (60,  69, "3", "Good",          3),
@@ -100,7 +100,7 @@ DEFAULTS = [
     {
         "name": "KG / Nursery",
         "description": "Descriptive scale for early childhood (Creche, Nursery, KG)",
-        "bands": [
+        "grades": [
             (80, 100, "Excellent",         "Excellent",         1),
             (65,  79, "Very Good",         "Very Good",         2),
             (50,  64, "Good",              "Good",              3),
@@ -130,12 +130,12 @@ async def seed_grading_scales(db: AsyncSession) -> None:
         db.add(scale)
         await db.flush()
 
-        for min_s, max_s, label, remark, order in s["bands"]:
-            db.add(GradingBand(
+        for min_s, max_s, label, remark, order in s["grades"]:
+            db.add(Grade(
                 scale_id=scale.id,
                 min_score=min_s,
                 max_score=max_s,
-                grade_label=label,
+                label=label,
                 remark=remark,
                 order=order,
             ))
