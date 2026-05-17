@@ -2,7 +2,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ClipboardList, Plus, Settings, AlertCircle } from "lucide-react";
+import { ClipboardList, Plus, Settings, BarChart2, AlertCircle } from "lucide-react";
 import { useAuthStore } from "@/lib/store";
 import {
   useAcademicYears,
@@ -109,6 +109,14 @@ export default function AssessmentsPage() {
           </p>
         </div>
         <div className="flex w-full gap-2 sm:w-auto sm:flex-wrap">
+          {isAdmin && (
+            <Link href="/assessments/results">
+              <Button variant="secondary" size="sm" className="h-10 sm:h-8">
+                <BarChart2 className="h-4 w-4" />
+                Results
+              </Button>
+            </Link>
+          )}
           {isAdmin && (
             <Link href="/assessments/setup">
               <Button variant="secondary" size="sm" className="h-10 sm:h-8">

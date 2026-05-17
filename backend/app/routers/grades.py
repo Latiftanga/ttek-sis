@@ -349,6 +349,23 @@ async def update_assessment(
                 f"{body.date_administered.strftime('%d/%m/%Y')} for this class and subject.",
             )
 
+    # Reject max_score reductions that would drop below an existing score
+    new_max = body.model_dump(exclude_unset=True).get("max_score")
+    if new_max is not None and new_max < assessment.max_score:
+        highest_res = await db.execute(
+            select(func.max(AssessmentScore.score)).where(
+                AssessmentScore.assessment_id == assessment_id,
+                AssessmentScore.score.isnot(None),
+            )
+        )
+        highest = highest_res.scalar_one_or_none()
+        if highest is not None and highest > new_max:
+            raise HTTPException(
+                409,
+                f"Cannot reduce max score to {new_max}: a student already has a score of {highest}. "
+                "Edit or clear that score first.",
+            )
+
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(assessment, field, value)
     await db.commit()
@@ -446,17 +463,6 @@ async def get_gradebook(
     assessment = await _get_assessment(assessment_id, school.id, db)
     term = await _get_term(assessment.term_id, school.id, db)
 
-    # Get current year
-    year_res = await db.execute(
-        select(AcademicYear).where(
-            AcademicYear.school_id == school.id,
-            AcademicYear.is_current.is_(True),
-        )
-    )
-    year = year_res.scalar_one_or_none()
-    if not year:
-        raise HTTPException(404, "No current academic year set")
-
     # Determine if this is an elective subject so we can filter to only
     # students who selected it. Electives are an SHS-only concept; for any
     # other school type, every enrolled student takes every subject.
@@ -470,25 +476,45 @@ async def get_gradebook(
         and school.school_type == "shs"
     )
 
-    # Base enrollment query: only students present during this term.
+    # Base enrollment query: all active students in this class for the year
+    # the assessment's term belongs to.
+    # We intentionally omit the start_date filter — schools often enrol
+    # students retroactively when first setting up the SIS, so a student
+    # enrolled today must still appear in a term that ended last month.
     enrollment_q = (
         select(Enrollment)
         .options(selectinload(Enrollment.student))
         .where(
             Enrollment.school_id == school.id,
             Enrollment.class_id == assessment.class_id,
-            Enrollment.academic_year_id == year.id,
+            Enrollment.academic_year_id == term.academic_year_id,
             Enrollment.status == "active",
-            Enrollment.start_date <= term.end_date,
         )
         .order_by(Enrollment.student_id)
     )
     if is_elective:
-        enrollment_q = enrollment_q.join(
-            StudentSubject,
-            (StudentSubject.enrollment_id == Enrollment.id)
-            & (StudentSubject.subject_id == assessment.subject_id),
+        # Only inner-join StudentSubject when elective assignments already
+        # exist for this class+subject. If none exist yet, fall back to all
+        # enrolled students so teachers aren't blocked from entering scores.
+        has_assignments_res = await db.execute(
+            select(StudentSubject.id).where(
+                StudentSubject.subject_id == assessment.subject_id,
+                StudentSubject.enrollment_id.in_(
+                    select(Enrollment.id).where(
+                        Enrollment.school_id == school.id,
+                        Enrollment.class_id == assessment.class_id,
+                        Enrollment.academic_year_id == term.academic_year_id,
+                        Enrollment.status == "active",
+                    )
+                ),
+            ).limit(1)
         )
+        if has_assignments_res.scalar_one_or_none():
+            enrollment_q = enrollment_q.join(
+                StudentSubject,
+                (StudentSubject.enrollment_id == Enrollment.id)
+                & (StudentSubject.subject_id == assessment.subject_id),
+            )
 
     enrollments_res = await db.execute(enrollment_q)
     enrollments = enrollments_res.scalars().all()
@@ -610,7 +636,7 @@ async def submit_scores(
                     new_score=record.score,
                     old_is_absent=old_is_absent,
                     new_is_absent=record.is_absent,
-                    reason=record.remarks,
+                    reason=record.remarks if assessment.is_published else None,
                     is_after_submission=assessment.is_published,
                     is_after_lock=False,
                     changed_at_hour=now.hour,
@@ -872,24 +898,14 @@ async def compute_term_results(
     if not subject_ids:
         raise HTTPException(404, "No assessments found for this class and term")
 
-    # Get current year and all enrollments
-    year_res = await db.execute(
-        select(AcademicYear).where(
-            AcademicYear.school_id == school.id,
-            AcademicYear.is_current.is_(True),
-        )
-    )
-    year = year_res.scalar_one_or_none()
-    if not year:
-        raise HTTPException(404, "No current academic year")
-
+    # All active enrollments for this class and year (no start_date filter —
+    # retroactively enrolled students must be included in computed results).
     enrollments_res = await db.execute(
         select(Enrollment).where(
             Enrollment.school_id == school.id,
             Enrollment.class_id  == body.class_id,
-            Enrollment.academic_year_id == year.id,
+            Enrollment.academic_year_id == term.academic_year_id,
             Enrollment.status    == "active",
-            Enrollment.start_date <= term.end_date,
         )
     )
     all_enrollments = enrollments_res.scalars().all()

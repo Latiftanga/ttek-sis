@@ -659,6 +659,17 @@ export interface ScoreEditLog {
   is_after_lock: boolean;
 }
 
+export interface ComputeResult {
+  computed: number;
+  subjects: number;
+  message: string;
+}
+
+export interface LockResult {
+  locked: number;
+  message: string;
+}
+
 export const assessmentsApi = {
   listScales: (): Promise<GradingScale[]> =>
     api.get("/assessments/grading-scales").then((r) => r.data),
@@ -709,5 +720,18 @@ export const assessmentsApi = {
     api.patch(`/assessments/${id}/scores/${studentId}`, body).then((r) => r.data),
   getScoreHistory: (id: string, studentId: string): Promise<ScoreEditLog[]> =>
     api.get(`/assessments/${id}/scores/${studentId}/history`).then((r) => r.data),
+
+  computeTermResults: (body: {
+    class_id: string;
+    term_id: string;
+    subject_id?: string;
+  }): Promise<ComputeResult> =>
+    api.post("/assessments/term-results/compute", body).then((r) => r.data),
+
+  lockTermResults: (body: {
+    class_id: string;
+    term_id: string;
+  }): Promise<LockResult> =>
+    api.post("/assessments/term-results/lock", body).then((r) => r.data),
 };
 

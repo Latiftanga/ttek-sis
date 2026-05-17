@@ -7,8 +7,10 @@ import {
   type AssessmentCreateBody,
   type AssessmentUpdateBody,
   type BulkScoreBody,
+  type ComputeResult,
   type GradebookResponse,
   type GradingScale,
+  type LockResult,
   type ScoreEditBody,
   type ScoreEditLog,
 } from "@/lib/api";
@@ -239,6 +241,22 @@ export function useBulkScore(assessmentId: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: [slug, "gradebook", assessmentId] });
     },
+  });
+}
+
+export function useComputeTermResults() {
+  return useMutation<
+    ComputeResult,
+    Error,
+    { class_id: string; term_id: string; subject_id?: string }
+  >({
+    mutationFn: (body) => assessmentsApi.computeTermResults(body),
+  });
+}
+
+export function useLockTermResults() {
+  return useMutation<LockResult, Error, { class_id: string; term_id: string }>({
+    mutationFn: (body) => assessmentsApi.lockTermResults(body),
   });
 }
 

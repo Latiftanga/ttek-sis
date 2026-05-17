@@ -48,6 +48,7 @@ export interface Class {
   is_wassce_level: boolean;
   class_teacher_id: string | null;
   class_teacher_name: string | null;
+  school_programme_id: string | null;
   created_at: string;
 }
 
@@ -480,7 +481,7 @@ export interface ClassSubjectRow {
   subject_id: string;
   subject_name: string;
   subject_code: string | null;
-  subject_category: string;
+  subject_category: string | null;
   teacher_id: string | null;
   teacher_name: string | null;
   order: number;

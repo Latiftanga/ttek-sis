@@ -330,7 +330,7 @@ export default function ScoreEntryPage() {
         </div>
         {entries.length === 0 ? (
           <div className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">
-            No students enrolled in this class for the current year.
+            No students enrolled in this class for this academic year.
           </div>
         ) : (
           <ul className="divide-y divide-gray-100 dark:divide-gray-800">
