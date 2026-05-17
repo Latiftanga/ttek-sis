@@ -13,6 +13,8 @@ import {
   type LockResult,
   type ScoreEditBody,
   type ScoreEditLog,
+  type StudentTermReport,
+  type StudentTermBreakdown,
 } from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
 
@@ -337,5 +339,47 @@ export function useEditScore(assessmentId: string) {
         queryKey: [slug, "score-history", assessmentId, vars.studentId],
       });
     },
+  });
+}
+
+export function useStudentReport(
+  studentId: string | null,
+  termId: string | null,
+) {
+  const slug = useSlug();
+  return useQuery<StudentTermReport>({
+    queryKey: [slug, "student-report", studentId, termId],
+    queryFn: () =>
+      assessmentsApi.studentReport(studentId!, termId ? { term_id: termId } : undefined),
+    enabled: !!slug && !!studentId,
+  });
+}
+
+export function useClassReports(
+  classId: string | null,
+  termId: string | null,
+) {
+  const slug = useSlug();
+  return useQuery<StudentTermReport[]>({
+    queryKey: [slug, "class-reports", classId, termId],
+    queryFn: () =>
+      assessmentsApi.classReports(classId!, termId ? { term_id: termId } : undefined),
+    enabled: !!slug && !!classId,
+  });
+}
+
+export function useStudentBreakdown(
+  studentId: string | null,
+  termId: string | null,
+) {
+  const slug = useSlug();
+  return useQuery<StudentTermBreakdown>({
+    queryKey: [slug, "student-breakdown", studentId, termId],
+    queryFn: () =>
+      assessmentsApi.studentBreakdown(
+        studentId!,
+        termId ? { term_id: termId } : undefined,
+      ),
+    enabled: !!slug && !!studentId,
   });
 }

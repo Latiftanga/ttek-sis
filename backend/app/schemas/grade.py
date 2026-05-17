@@ -1,6 +1,6 @@
 from uuid import UUID
 from datetime import date, datetime
-from typing import Optional, List
+from typing import Dict, Optional, List
 from pydantic import BaseModel, field_validator, model_validator
 from decimal import Decimal
 
@@ -271,6 +271,7 @@ class StudentTermReport(BaseModel):
     first_name:      str
     middle_name:     Optional[str] = None
     last_name:       str
+    photo_url:       Optional[str] = None
     class_name:      str
     term_name:       str
     academic_year:   str
@@ -278,6 +279,60 @@ class StudentTermReport(BaseModel):
     total_score:     Optional[Decimal] = None
     overall_position: Optional[int]    = None
     attendance_pct:  Optional[Decimal] = None
+    verification_token: Optional[str]  = None
+    # HMAC-signed (student_id, term_id) for the QR on the printed card.
+    # Public endpoint /api/verify/report/{token} decodes it.
+    subject_averages:  Dict[UUID, Decimal] = {}
+    # Class average raw_score per subject in this class+term — drives the
+    # "compare to class" tick marks on the report-card performance bars.
+
+
+# ══════════════════════════════════════════════════════
+# REPORT CARD BREAKDOWN
+# ══════════════════════════════════════════════════════
+
+class AssessmentBreakdown(BaseModel):
+    """One assessment instance the student took within a category."""
+    assessment_id:     UUID
+    date_administered: Optional[date] = None
+    description:       Optional[str]  = None
+    score:             Optional[Decimal] = None
+    max_score:         Decimal
+    is_absent:         bool = False
+    pct:               Optional[Decimal] = None
+
+
+class CategoryBreakdown(BaseModel):
+    """One CA or Exam category's contribution to a subject's score."""
+    category_id:  UUID
+    name:         str
+    is_ca:        bool
+    weight:       Decimal
+    category_pct: Optional[Decimal] = None
+    # Average of percentage scores across assessments in this category.
+    contribution: Optional[Decimal] = None
+    # (category_pct / 100) * weight — what this category added to ca/exam score.
+    assessments:  List[AssessmentBreakdown] = []
+
+
+class SubjectBreakdown(BaseModel):
+    """A subject's report-card row plus the per-category breakdown behind it."""
+    subject_id:   UUID
+    subject_name: str
+    raw_score:    Optional[Decimal] = None
+    ca_score:     Optional[Decimal] = None
+    exam_score:   Optional[Decimal] = None
+    grade:        Optional[str]     = None
+    remark:       Optional[str]     = None
+    position:     Optional[int]     = None
+    categories:   List[CategoryBreakdown] = []
+
+
+class StudentTermBreakdown(BaseModel):
+    """Full per-subject breakdown for one student in one term."""
+    student_id: UUID
+    term_id:    UUID
+    subjects:   List[SubjectBreakdown]
 
 
 # ══════════════════════════════════════════════════════

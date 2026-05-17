@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  ArrowLeft, Phone, Mail, MapPin, Pencil, Trash2,
+  ArrowLeft, Phone, Mail, MapPin, Pencil, Trash2, FileText,
   ShieldCheck, ShieldOff, KeyRound, UserPlus, AlertCircle,
   User, Calendar, Home, Building2,
 } from "lucide-react";
@@ -253,6 +253,12 @@ export default function StudentDetailPage() {
           Back to Students
         </Link>
         <div className="flex gap-2">
+          <Link href={`/students/${student.id}/report`}>
+            <Button size="sm" variant="secondary">
+              <FileText className="h-4 w-4" />
+              Report card
+            </Button>
+          </Link>
           {canManage && (
             <Button size="sm" variant="secondary" onClick={() => setEditOpen(true)}>
               <Pencil className="h-4 w-4" />

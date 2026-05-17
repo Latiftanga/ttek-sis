@@ -73,3 +73,62 @@ input[type="week"] {
 .dark ::-webkit-scrollbar-thumb:hover {
   background: #4b5563;
 }
+
+/* ─── Print rules ──────────────────────────────────────────────────────────
+ * Tuned for the report card, but safe to apply globally — any other page
+ * the user prints will also drop chrome and use the full sheet.
+ */
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+
+  /* Force every element to honour its background colour and image. Without
+     this, the brand-coloured header band, table header, position badge, and
+     watermark all render as plain white in print. Browsers normally drop
+     backgrounds to save ink — we want them on for the report card. */
+  *,
+  *::before,
+  *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  html,
+  body {
+    background: white !important;
+  }
+
+  /* Let scroll containers and fixed-height wrappers flow naturally so the
+     card isn't clipped to one screenful. The dashboard layout uses
+     `h-screen overflow-hidden` and `<main class="overflow-y-auto">` — both
+     would otherwise stop the printable area at the first page. */
+  .h-screen,
+  .overflow-hidden,
+  .overflow-y-auto {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  /* Drop the dashboard container's padding + max width so the card uses
+     the full printable area instead of being inset like an in-app page. */
+  main > div {
+    max-width: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Page break helper — Tailwind has print:break-after-page in v3+ but the
+     compiled CSS occasionally omits it; this is a safety net. */
+  .break-after-page {
+    break-after: page;
+    page-break-after: always;
+  }
+
+  /* Generic escape hatch for anything that should never print. */
+  .no-print {
+    display: none !important;
+  }
+}

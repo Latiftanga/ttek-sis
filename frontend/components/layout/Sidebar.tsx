@@ -146,7 +146,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   return (
     <>
       {/* Desktop: static sidebar */}
-      <div className="hidden h-screen border-r border-gray-200 dark:border-gray-800 lg:block">
+      <div className="hidden h-screen border-r border-gray-200 dark:border-gray-800 lg:block print:hidden">
         <SidebarContent onClose={onClose} showClose={false} />
       </div>
 
@@ -154,7 +154,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       <div
         aria-hidden={!isOpen}
         className={cn(
-          "fixed inset-0 z-40 lg:hidden",
+          "fixed inset-0 z-40 lg:hidden print:hidden",
           "transition-opacity duration-200",
           isOpen ? "opacity-100" : "pointer-events-none opacity-0"
         )}

@@ -678,6 +678,80 @@ export interface LockResult {
   message: string;
 }
 
+export interface TermResult {
+  id: string;
+  school_id: string;
+  student_id: string;
+  subject_id: string;
+  term_id: string;
+  class_id: string;
+  raw_score: number | null;
+  ca_score: number | null;
+  exam_score: number | null;
+  grade: string | null;
+  remark: string | null;
+  position: number | null;
+  is_computed: boolean;
+  is_submitted: boolean;
+  computed_at: string | null;
+}
+
+export interface StudentTermReport {
+  student_id: string;
+  student_number: string;
+  first_name: string;
+  middle_name: string | null;
+  last_name: string;
+  photo_url: string | null;
+  class_name: string;
+  term_name: string;
+  academic_year: string;
+  results: TermResult[];
+  total_score: number | null;
+  overall_position: number | null;
+  attendance_pct: number | null;
+  verification_token: string | null;
+  subject_averages: Record<string, number>;
+}
+
+export interface AssessmentBreakdown {
+  assessment_id: string;
+  date_administered: string | null;
+  description: string | null;
+  score: number | null;
+  max_score: number;
+  is_absent: boolean;
+  pct: number | null;
+}
+
+export interface CategoryBreakdown {
+  category_id: string;
+  name: string;
+  is_ca: boolean;
+  weight: number;
+  category_pct: number | null;
+  contribution: number | null;
+  assessments: AssessmentBreakdown[];
+}
+
+export interface SubjectBreakdown {
+  subject_id: string;
+  subject_name: string;
+  raw_score: number | null;
+  ca_score: number | null;
+  exam_score: number | null;
+  grade: string | null;
+  remark: string | null;
+  position: number | null;
+  categories: CategoryBreakdown[];
+}
+
+export interface StudentTermBreakdown {
+  student_id: string;
+  term_id: string;
+  subjects: SubjectBreakdown[];
+}
+
 export const assessmentsApi = {
   listScales: (): Promise<GradingScale[]> =>
     api.get("/assessments/grading-scales").then((r) => r.data),
@@ -766,5 +840,55 @@ export const assessmentsApi = {
     term_id: string;
   }): Promise<LockResult> =>
     api.post("/assessments/term-results/lock", body).then((r) => r.data),
+
+  classReports: (
+    classId: string,
+    params?: { term_id?: string },
+  ): Promise<StudentTermReport[]> =>
+    api
+      .get(`/assessments/term-results/class/${classId}/reports`, { params })
+      .then((r) => r.data),
+
+  studentReport: (
+    studentId: string,
+    params?: { term_id?: string },
+  ): Promise<StudentTermReport> =>
+    api
+      .get(`/assessments/term-results/student/${studentId}`, { params })
+      .then((r) => r.data),
+
+  studentBreakdown: (
+    studentId: string,
+    params?: { term_id?: string },
+  ): Promise<StudentTermBreakdown> =>
+    api
+      .get(`/assessments/term-results/student/${studentId}/breakdown`, { params })
+      .then((r) => r.data),
+};
+
+// ── Public verify (no auth) ────────────────────────────────────────────────
+
+export interface VerifiedSchool {
+  name: string;
+  district: string | null;
+  region: string | null;
+  phone: string | null;
+  email: string | null;
+  logo_url: string | null;
+  accent_color: string;
+}
+
+export interface VerifyReportResponse {
+  report: StudentTermReport;
+  breakdown: StudentTermBreakdown;
+  school: VerifiedSchool;
+}
+
+export const verifyApi = {
+  // Same axios instance — when nobody is logged in the request interceptor
+  // simply doesn't attach an Authorization header, which is what the public
+  // verify endpoint expects.
+  getReport: (token: string): Promise<VerifyReportResponse> =>
+    api.get(`/verify/report/${token}`).then((r) => r.data),
 };
 

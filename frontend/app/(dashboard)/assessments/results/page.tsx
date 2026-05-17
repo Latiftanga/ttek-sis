@@ -2,7 +2,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import toast from "react-hot-toast";
-import { ArrowLeft, AlertCircle, CheckCircle2, Lock, RefreshCw } from "lucide-react";
+import { ArrowLeft, AlertCircle, CheckCircle2, Lock, RefreshCw, Printer } from "lucide-react";
 import { useAuthStore } from "@/lib/store";
 import { useAcademicYears, useTerms, useClasses } from "@/lib/hooks/useAcademic";
 import {
@@ -158,18 +158,45 @@ export default function TermResultsPage() {
           </div>
         </div>
 
-        <div className="mt-5 flex items-center justify-between border-t border-gray-100 pt-4 dark:border-gray-800">
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-4 dark:border-gray-800">
           <p className="text-xs text-gray-400 dark:text-gray-500">
             Re-running overwrites previous computed results (unless locked).
           </p>
-          <Button
-            onClick={handleCompute}
-            loading={compute.isPending}
-            disabled={!classId || !resolvedTermId}
-          >
-            <RefreshCw className="h-4 w-4" />
-            Compute results
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href={
+                classId && resolvedTermId
+                  ? `/assessments/results/print?class_id=${classId}&term_id=${resolvedTermId}`
+                  : "/assessments/results/print"
+              }
+              tabIndex={!classId || !resolvedTermId ? -1 : undefined}
+              aria-disabled={!classId || !resolvedTermId}
+              className={
+                !classId || !resolvedTermId ? "pointer-events-none" : undefined
+              }
+            >
+              <Button
+                variant="secondary"
+                disabled={!classId || !resolvedTermId}
+                title={
+                  !classId || !resolvedTermId
+                    ? "Select a class and term first"
+                    : undefined
+                }
+              >
+                <Printer className="h-4 w-4" />
+                Print all report cards
+              </Button>
+            </Link>
+            <Button
+              onClick={handleCompute}
+              loading={compute.isPending}
+              disabled={!classId || !resolvedTermId}
+            >
+              <RefreshCw className="h-4 w-4" />
+              Compute results
+            </Button>
+          </div>
         </div>
       </div>
 

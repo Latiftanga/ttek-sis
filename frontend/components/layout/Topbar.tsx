@@ -11,7 +11,7 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
   const { school } = useAuthStore();
 
   return (
-    <header className="flex h-14 shrink-0 items-center gap-3 border-b border-gray-200 bg-white px-4 dark:border-gray-800 dark:bg-gray-900 lg:hidden">
+    <header className="flex h-14 shrink-0 items-center gap-3 border-b border-gray-200 bg-white px-4 dark:border-gray-800 dark:bg-gray-900 lg:hidden print:hidden">
       <button
         onClick={onMenuClick}
         aria-label="Open navigation"

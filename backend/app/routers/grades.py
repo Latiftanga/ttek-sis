@@ -26,6 +26,7 @@ from app.models.student import Student
 from app.models.enrollment import Enrollment
 from app.models.student_subject import StudentSubject
 from app.models.attendance import AttendanceRecord, AttendanceSession
+from app.routers.verify import make_verification_token
 from app.schemas.grade import (
     AssessmentCategoryCreate, AssessmentCategoryUpdate, AssessmentCategoryResponse,
     AssessmentCreate, AssessmentUpdate, AssessmentResponse,
@@ -33,6 +34,7 @@ from app.schemas.grade import (
     AssessmentScoreResponse, GradebookEntry, GradebookResponse,
     ScoreEditLogResponse,
     ComputeTermResultsRequest, LockTermResultsRequest, TermResultResponse, StudentTermReport,
+    StudentTermBreakdown, SubjectBreakdown, CategoryBreakdown, AssessmentBreakdown,
     GradingScaleCreate, GradingScaleUpdate,
     GradeCreate, GradeUpdate, GradingScaleResponse,
 )
@@ -1369,12 +1371,19 @@ async def student_term_report(
         attended = sum(1 for s in statuses if s in ("present", "late"))
         attendance_pct = Decimal(str(round(attended / total_sessions * 100, 2)))
 
+    subject_averages = (
+        await _fetch_subject_averages(school.id, class_id, term_id, db)
+        if class_id is not None
+        else {}
+    )
+
     return StudentTermReport(
         student_id=student_id,
         student_number=student.student_number,
         first_name=student.first_name,
         middle_name=student.middle_name,
         last_name=student.last_name,
+        photo_url=student.photo_url,
         class_name=class_name,
         term_name=term.name if term else "",
         academic_year=year.name if year else "",
@@ -1382,6 +1391,337 @@ async def student_term_report(
         total_score=total_score,
         overall_position=overall_position,
         attendance_pct=attendance_pct,
+        verification_token=make_verification_token(student_id, term_id),
+        subject_averages=subject_averages,
+    )
+
+
+@router.get("/term-results/class/{class_id}/reports",
+            response_model=List[StudentTermReport])
+async def class_term_reports(
+    class_id: UUID,
+    user: CurrentUser, school: CurrentSchool, db: DB,
+    term_id: Optional[UUID] = Query(None),
+):
+    """
+    Every student's report card data for a class + term in one round trip.
+    Feeds the bulk-print page so headteachers can print all cards for a
+    class without N round-trips.
+
+    Admin-only — same role gate as compute_term_results.
+    """
+    if user.role not in ("headteacher", "school_admin", "superadmin"):
+        raise HTTPException(
+            403, "Only headteacher or admin can view class report cards",
+        )
+
+    await _assert_class_in_school(class_id, school.id, db)
+
+    # Resolve term.
+    if not term_id:
+        term_res = await db.execute(
+            select(Term).where(
+                Term.school_id == school.id,
+                Term.is_current.is_(True),
+            )
+        )
+        term = term_res.scalar_one_or_none()
+        if not term:
+            raise HTTPException(404, "No current term set")
+        term_id = term.id
+    else:
+        term = await _get_term(term_id, school.id, db)
+
+    year_res = await db.execute(
+        select(AcademicYear).where(AcademicYear.id == term.academic_year_id)
+    )
+    year = year_res.scalar_one_or_none()
+
+    class_res = await db.execute(select(Class).where(Class.id == class_id))
+    cls = class_res.scalar_one_or_none()
+    class_name = cls.name if cls else "Unknown"
+
+    # All active enrollments for this class + year.
+    enrollments_res = await db.execute(
+        select(Enrollment)
+        .options(selectinload(Enrollment.student))
+        .where(
+            Enrollment.school_id == school.id,
+            Enrollment.class_id  == class_id,
+            Enrollment.academic_year_id == term.academic_year_id,
+            Enrollment.status == "active",
+        )
+        .order_by(Enrollment.student_id)
+    )
+    enrollments = enrollments_res.scalars().all()
+    if not enrollments:
+        return []
+
+    student_ids = [e.student_id for e in enrollments]
+
+    # All TermResults for this class + term in one query, grouped by student.
+    results_res = await db.execute(
+        select(TermResult).where(
+            TermResult.school_id == school.id,
+            TermResult.class_id  == class_id,
+            TermResult.term_id   == term_id,
+            TermResult.student_id.in_(student_ids),
+        )
+    )
+    results_by_student: dict[UUID, list[TermResult]] = {}
+    for r in results_res.scalars().all():
+        results_by_student.setdefault(r.student_id, []).append(r)
+
+    # Overall position: rank every student in the class by their sum of
+    # raw_scores. Computed once for the whole class.
+    student_totals: dict[UUID, Decimal] = {}
+    for sid, rs in results_by_student.items():
+        valid = [r.raw_score for r in rs if r.raw_score is not None]
+        if valid:
+            student_totals[sid] = sum(valid, Decimal("0"))
+    ranked = sorted(student_totals.items(), key=lambda x: x[1], reverse=True)
+    position_by_student: dict[UUID, int] = {
+        sid: pos for pos, (sid, _) in enumerate(ranked, 1)
+    }
+
+    # Attendance — one query for all students in this class+term.
+    att_res = await db.execute(
+        select(AttendanceRecord.student_id, AttendanceRecord.status)
+        .join(AttendanceSession,
+              AttendanceRecord.session_id == AttendanceSession.id)
+        .where(
+            AttendanceRecord.school_id  == school.id,
+            AttendanceRecord.student_id.in_(student_ids),
+            AttendanceSession.term_id   == term_id,
+            AttendanceSession.status    == "submitted",
+        )
+    )
+    attendance_buckets: dict[UUID, list[str]] = {}
+    for sid, status in att_res.all():
+        attendance_buckets.setdefault(sid, []).append(status)
+
+    def _attendance_pct(sid: UUID) -> Optional[Decimal]:
+        rows = attendance_buckets.get(sid, [])
+        if not rows:
+            return None
+        attended = sum(1 for s in rows if s in ("present", "late"))
+        return Decimal(str(round(attended / len(rows) * 100, 2)))
+
+    # Same averages for every student in this class+term — compute once.
+    subject_averages = await _fetch_subject_averages(
+        school.id, class_id, term_id, db,
+    )
+
+    reports: list[StudentTermReport] = []
+    for enrollment in enrollments:
+        student = enrollment.student
+        rs = results_by_student.get(student.id, [])
+        total = student_totals.get(student.id)
+
+        reports.append(StudentTermReport(
+            student_id=student.id,
+            student_number=student.student_number,
+            first_name=student.first_name,
+            middle_name=student.middle_name,
+            last_name=student.last_name,
+            photo_url=student.photo_url,
+            class_name=class_name,
+            term_name=term.name,
+            academic_year=year.name if year else "",
+            results=[TermResultResponse.model_validate(r) for r in rs],
+            total_score=total,
+            overall_position=position_by_student.get(student.id),
+            attendance_pct=_attendance_pct(student.id),
+            verification_token=make_verification_token(student.id, term_id),
+            subject_averages=subject_averages,
+        ))
+
+    # Alphabetical for predictable print order.
+    reports.sort(key=lambda r: (r.last_name.lower(), r.first_name.lower()))
+    return reports
+
+
+@router.get("/term-results/student/{student_id}/breakdown",
+            response_model=StudentTermBreakdown)
+async def student_term_breakdown(
+    student_id: UUID,
+    user: CurrentUser, school: CurrentSchool, db: DB,
+    term_id: Optional[UUID] = Query(None),
+):
+    """
+    Per-subject breakdown for the report card: each CA/Exam category's
+    contribution and the individual assessment scores within it.
+
+    Mirrors what the report-card "show me how this ca_score came about"
+    drill-down displays — uses the same published-only filter as
+    compute_term_results so what you see matches what was graded.
+    """
+    student_res = await db.execute(
+        select(Student).where(
+            Student.id == student_id,
+            Student.school_id == school.id,
+        )
+    )
+    if student_res.scalar_one_or_none() is None:
+        raise HTTPException(404, "Student not found")
+
+    # Resolve term (same shape as student_term_report).
+    if not term_id:
+        term_res = await db.execute(
+            select(Term).where(
+                Term.school_id == school.id,
+                Term.is_current.is_(True),
+            )
+        )
+        term = term_res.scalar_one_or_none()
+        if not term:
+            raise HTTPException(404, "No current term set")
+        term_id = term.id
+    else:
+        term_res = await db.execute(
+            select(Term).where(
+                Term.id == term_id,
+                Term.school_id == school.id,
+            )
+        )
+        term = term_res.scalar_one_or_none()
+        if not term:
+            raise HTTPException(404, "Term not found")
+
+    # This student's per-subject TermResults — gives us the per-subject
+    # totals and the class_id we need to scope the assessment fetch.
+    results_res = await db.execute(
+        select(TermResult).where(
+            TermResult.school_id  == school.id,
+            TermResult.student_id == student_id,
+            TermResult.term_id    == term_id,
+        )
+    )
+    results = results_res.scalars().all()
+
+    if not results:
+        return StudentTermBreakdown(
+            student_id=student_id, term_id=term_id, subjects=[],
+        )
+
+    subject_ids = [r.subject_id for r in results]
+    class_ids = {r.class_id for r in results}
+
+    # Categories — needed for name + is_ca + weight per assessment.
+    cats_res = await db.execute(
+        select(AssessmentCategory).where(
+            AssessmentCategory.school_id == school.id,
+        )
+    )
+    categories = {c.id: c for c in cats_res.scalars().all()}
+
+    # All published assessments in scope, in one query.
+    assess_res = await db.execute(
+        select(Assessment).where(
+            Assessment.school_id   == school.id,
+            Assessment.class_id.in_(class_ids),
+            Assessment.subject_id.in_(subject_ids),
+            Assessment.term_id     == term_id,
+            Assessment.is_published.is_(True),
+        )
+    )
+    assessments = assess_res.scalars().all()
+
+    # All this student's scores for those assessments, in one query.
+    scores_res = await db.execute(
+        select(AssessmentScore).where(
+            AssessmentScore.school_id     == school.id,
+            AssessmentScore.student_id    == student_id,
+            AssessmentScore.assessment_id.in_([a.id for a in assessments])
+                if assessments else AssessmentScore.id.is_(None),
+        )
+    )
+    scores_by_assessment = {s.assessment_id: s for s in scores_res.scalars().all()}
+
+    # Subject names (one query rather than per-subject).
+    subj_res = await db.execute(
+        select(Subject).where(Subject.id.in_(subject_ids))
+    )
+    subject_name_by_id = {s.id: s.name for s in subj_res.scalars().all()}
+
+    # Group assessments by (subject_id, category_id).
+    by_subject_cat: dict = {}
+    for a in assessments:
+        by_subject_cat.setdefault((a.subject_id, a.category_id), []).append(a)
+
+    subjects: list[SubjectBreakdown] = []
+    for r in results:
+        cat_blocks: list[CategoryBreakdown] = []
+        # Stable order: CA categories first, then by category.order.
+        active_cat_ids = {
+            cid for (sid, cid) in by_subject_cat if sid == r.subject_id
+        }
+        ordered_cats = sorted(
+            (categories[cid] for cid in active_cat_ids if cid in categories),
+            key=lambda c: (0 if c.is_ca else 1, c.order or 0, c.name),
+        )
+
+        for cat in ordered_cats:
+            cat_assessments = by_subject_cat.get((r.subject_id, cat.id), [])
+            # Build per-assessment rows; compute the category-level percentage
+            # average across instances the student actually took.
+            ass_breakdown: list[AssessmentBreakdown] = []
+            valid_pcts: list[Decimal] = []
+            for a in sorted(
+                cat_assessments,
+                key=lambda x: (x.date_administered or x.created_at.date(), x.created_at),
+            ):
+                s = scores_by_assessment.get(a.id)
+                pct: Optional[Decimal] = None
+                if s and not s.is_absent and s.score is not None:
+                    pct = round((s.score / a.max_score) * 100, 2)
+                    valid_pcts.append(pct)
+                ass_breakdown.append(AssessmentBreakdown(
+                    assessment_id=a.id,
+                    date_administered=a.date_administered,
+                    description=a.description,
+                    score=s.score if s else None,
+                    max_score=a.max_score,
+                    is_absent=s.is_absent if s else False,
+                    pct=pct,
+                ))
+
+            cat_pct = (
+                round(sum(valid_pcts) / len(valid_pcts), 2)
+                if valid_pcts else None
+            )
+            contribution = (
+                round((cat_pct / 100) * cat.weight, 2)
+                if cat_pct is not None else None
+            )
+
+            cat_blocks.append(CategoryBreakdown(
+                category_id=cat.id,
+                name=cat.name,
+                is_ca=cat.is_ca,
+                weight=cat.weight,
+                category_pct=cat_pct,
+                contribution=contribution,
+                assessments=ass_breakdown,
+            ))
+
+        subjects.append(SubjectBreakdown(
+            subject_id=r.subject_id,
+            subject_name=subject_name_by_id.get(r.subject_id, "Unknown"),
+            raw_score=r.raw_score,
+            ca_score=r.ca_score,
+            exam_score=r.exam_score,
+            grade=r.grade,
+            remark=r.remark,
+            position=r.position,
+            categories=cat_blocks,
+        ))
+
+    # Stable subject order — alphabetical for display.
+    subjects.sort(key=lambda s: s.subject_name.lower())
+
+    return StudentTermBreakdown(
+        student_id=student_id, term_id=term_id, subjects=subjects,
     )
 
 
@@ -1588,3 +1928,34 @@ def _apply_grading_scale(
             return g.label, g.remark
 
     return None, None
+
+
+async def _fetch_subject_averages(
+    school_id: UUID,
+    class_id: UUID,
+    term_id: UUID,
+    db: AsyncSession,
+) -> dict[UUID, Decimal]:
+    """
+    Average raw_score per subject across all computed TermResults in this
+    class+term. Used by the report card to render the "class average" tick
+    on each performance bar.
+    """
+    if class_id is None:
+        return {}
+    res = await db.execute(
+        select(TermResult.subject_id, func.avg(TermResult.raw_score))
+        .where(
+            TermResult.school_id == school_id,
+            TermResult.class_id == class_id,
+            TermResult.term_id == term_id,
+            TermResult.is_computed.is_(True),
+            TermResult.raw_score.isnot(None),
+        )
+        .group_by(TermResult.subject_id)
+    )
+    return {
+        sid: Decimal(str(round(float(avg), 2)))
+        for sid, avg in res.all()
+        if avg is not None
+    }
