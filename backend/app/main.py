@@ -10,6 +10,7 @@ from app.routers import auth, students, classes, staff as staff_router
 from app.routers import attendance as attendance_router
 from app.routers import grades as grades_router
 from app.routers import verify as verify_router
+from app.routers import rollover as rollover_router
 from app.routers import upload as upload_router
 from app.routers import schools as schools_router
 from app.dependencies import CurrentUser
@@ -72,6 +73,7 @@ app.include_router(attendance_router.router, prefix="/api/attendance", tags=["At
 app.include_router(grades_router.router, prefix="/api/assessments", tags=["Assessments"])
 # Public — no auth, exposes only what's encoded in a signed QR token.
 app.include_router(verify_router.router, prefix="/api/verify", tags=["Verify"])
+app.include_router(rollover_router.router, prefix="/api/rollover", tags=["Rollover"])
 app.include_router(staff_router.router, prefix="/api/staff", tags=["Staff"])
 
 app.mount("/media", StaticFiles(directory=settings.UPLOADS_DIR), name="media")

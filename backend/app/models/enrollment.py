@@ -55,6 +55,13 @@ class Enrollment(Base):
     is_boarding      = Column(Boolean, default=False)
     notes            = Column(Text)   # reason for demotion, special circumstances
 
+    # Who closed this enrollment (set to a non-active status). NULL while
+    # the enrollment is active. Combined with updated_at this answers
+    # "who promoted Yaw to JHS 3A and when?"
+    closed_by        = Column(UUID(as_uuid=True),
+                             ForeignKey("users.id"),
+                             nullable=True)
+
     created_at       = Column(DateTime(timezone=True), server_default=func.now())
     updated_at       = Column(DateTime(timezone=True), server_default=func.now(),
                              onupdate=func.now())
